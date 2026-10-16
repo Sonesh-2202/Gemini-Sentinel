@@ -1,4 +1,4 @@
-module github.com/soneshsk/hearth
+module github.com/sonesh-2202/gemini-sentinel
 
 go 1.26.0
 

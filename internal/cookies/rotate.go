@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 const (

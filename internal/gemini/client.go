@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/cookies"
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/cookies"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 const (

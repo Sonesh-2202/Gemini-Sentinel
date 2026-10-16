@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 // GeneratedImage represents a generated image returned inside a StreamGenerate frame.

@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/config"
-	"github.com/soneshsk/hearth/internal/cookies"
-	"github.com/soneshsk/hearth/internal/gemini"
-	"github.com/soneshsk/hearth/internal/prompt"
-	"github.com/soneshsk/hearth/internal/toolbridge"
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/config"
+	"github.com/sonesh-2202/gemini-sentinel/internal/cookies"
+	"github.com/sonesh-2202/gemini-sentinel/internal/gemini"
+	"github.com/sonesh-2202/gemini-sentinel/internal/prompt"
+	"github.com/sonesh-2202/gemini-sentinel/internal/toolbridge"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 // SetAccounts replaces the server's loaded account list (used by tests).
@@ -43,12 +43,14 @@ func (s *Server) registerAccountTokensLocked(rawID, targetID string) {
 			s.tokenToAcct[tok] = targetID
 		}
 	}
-	// Legacy gsb-<id> tokens from the previous brand keep working, but never
-	// override an existing mapping.
-	if legacy := config.LegacyPrefix + rawID; legacy != "" {
-		if _, explicit := s.Cfg.AccountTokens[legacy]; !explicit {
-			if _, taken := s.tokenToAcct[legacy]; !taken {
-				s.tokenToAcct[legacy] = targetID
+	// Legacy hearth-<id> and gsb-<id> tokens from previous brands keep
+	// working, but never override an existing mapping.
+	for _, prefix := range config.LegacyTokenPrefixes {
+		if legacy := prefix + rawID; legacy != "" {
+			if _, explicit := s.Cfg.AccountTokens[legacy]; !explicit {
+				if _, taken := s.tokenToAcct[legacy]; !taken {
+					s.tokenToAcct[legacy] = targetID
+				}
 			}
 		}
 	}

@@ -19,8 +19,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/toolbridge"
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/toolbridge"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 var (

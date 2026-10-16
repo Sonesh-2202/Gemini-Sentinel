@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/config"
-	"github.com/soneshsk/hearth/internal/cookies"
-	"github.com/soneshsk/hearth/internal/gemini"
-	"github.com/soneshsk/hearth/internal/prompt"
+	"github.com/sonesh-2202/gemini-sentinel/internal/config"
+	"github.com/sonesh-2202/gemini-sentinel/internal/cookies"
+	"github.com/sonesh-2202/gemini-sentinel/internal/gemini"
+	"github.com/sonesh-2202/gemini-sentinel/internal/prompt"
 )
 
 var (
@@ -426,7 +426,7 @@ func TestHTTPHandlerEndpoints(t *testing.T) {
 func TestHearthAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 	cfg := config.Load()
 	cfg.HomeDir = t.TempDir()
-	cfg.AccountTokens = nil // test automatic hearth-<id> and raw <id> registration
+	cfg.AccountTokens = nil // test automatic sentinel-<id> and raw <id> registration
 	srv := New(cfg)
 
 	var capturedLevel int
@@ -452,9 +452,9 @@ func TestHearthAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 	}
 	srv.SetAccounts([]*AccountState{acct})
 
-	// 1. Auth via hearth-<id>, legacy gsb-<id>, raw <id>, x-api-key, and model prefix hearth/ + @think=high
-	for _, token := range []string{"hearth-acc1", "gsb-acc1", "acc1"} {
-		reqBody := `{"model":"hearth/gemini-pro@think=high","messages":[{"role":"user","content":"ping"}]}`
+	// 1. Auth via sentinel-<id>, legacy hearth-<id>/gsb-<id>, raw <id>, x-api-key, and model prefix sentinel/ + @think=high
+	for _, token := range []string{"sentinel-acc1", "hearth-acc1", "gsb-acc1", "acc1"} {
+		reqBody := `{"model":"sentinel/gemini-pro@think=high","messages":[{"role":"user","content":"ping"}]}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBody))
 		req.Header.Set("x-api-key", token)
 		rec := httptest.NewRecorder()
@@ -467,20 +467,20 @@ func TestHearthAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 		}
 	}
 
-	// 1b. Legacy gsb/ model prefix still resolves.
-	reqLegacy := `{"model":"gsb/gemini-pro","messages":[{"role":"user","content":"ping"}]}`
+	// 1b. Legacy hearth/ and gsb/ model prefixes still resolve.
+	reqLegacy := `{"model":"hearth/gemini-pro","messages":[{"role":"user","content":"ping"}]}`
 	reqL := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqLegacy))
-	reqL.Header.Set("Authorization", "Bearer hearth-acc1")
+	reqL.Header.Set("Authorization", "Bearer sentinel-acc1")
 	recL := httptest.NewRecorder()
 	srv.ServeHTTP(recL, reqL)
 	if recL.Code != 200 {
-		t.Fatalf("legacy gsb/ model prefix failed with %d: %s", recL.Code, recL.Body.String())
+		t.Fatalf("legacy hearth/ model prefix failed with %d: %s", recL.Code, recL.Body.String())
 	}
 
 	// 2. Thinking budget_tokens -> medium (4)
-	reqBudget := `{"model":"hearth/gemini-pro","thinking":{"type":"enabled","budget_tokens":10000},"messages":[{"role":"user","content":"ping"}]}`
+	reqBudget := `{"model":"sentinel/gemini-pro","thinking":{"type":"enabled","budget_tokens":10000},"messages":[{"role":"user","content":"ping"}]}`
 	reqB := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBudget))
-	reqB.Header.Set("Authorization", "Bearer hearth-acc1")
+	reqB.Header.Set("Authorization", "Bearer sentinel-acc1")
 	recB := httptest.NewRecorder()
 	srv.ServeHTTP(recB, reqB)
 	if recB.Code != 200 || capturedLevel != 4 {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 var toolNameRe = regexp.MustCompile(`^[A-Za-z0-9_.:-]{1,128}$`)

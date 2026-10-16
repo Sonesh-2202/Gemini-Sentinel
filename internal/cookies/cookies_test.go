@@ -10,7 +10,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	fhttp "github.com/bogdanfinn/fhttp"
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 	"io"
 	"os"
 	"path/filepath"

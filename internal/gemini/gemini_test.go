@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	fhttp "github.com/bogdanfinn/fhttp"
-	"github.com/soneshsk/hearth/internal/cookies"
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/cookies"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 func TestParseFrameLineSkipsNullKeepaliveAndExtractsMetadata(t *testing.T) {

@@ -347,7 +347,7 @@ func FindBrowserCookieDB(nameOrPath string) (string, error) {
 // ReadBrowserCookies reads and decrypts Google session cookies from a Chrome/Chromium
 // or Firefox SQLite database without locking the browser's live file.
 func ReadBrowserCookies(dbPath string) (*ReadResult, error) {
-	tmpDir := filepath.Join(os.TempDir(), fmt.Sprintf("hearth-ck-%d-%d", os.Getpid(), time.Now().UnixNano()))
+	tmpDir := filepath.Join(os.TempDir(), fmt.Sprintf("sentinel-ck-%d-%d", os.Getpid(), time.Now().UnixNano()))
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return nil, err
 	}

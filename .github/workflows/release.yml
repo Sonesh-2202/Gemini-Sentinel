@@ -39,18 +39,18 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: >-
           go build -trimpath
-          -ldflags "-X github.com/soneshsk/hearth/internal/version.Version=${{ github.ref_name }} -X github.com/soneshsk/hearth/internal/version.Commit=${{ github.sha }} -X github.com/soneshsk/hearth/internal/version.Date=$(date -u +%FT%TZ)"
-          -o hearth-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./cmd/hearth
+          -ldflags "-X github.com/sonesh-2202/gemini-sentinel/internal/version.Version=${{ github.ref_name }} -X github.com/sonesh-2202/gemini-sentinel/internal/version.Commit=${{ github.sha }} -X github.com/sonesh-2202/gemini-sentinel/internal/version.Date=$(date -u +%FT%TZ)"
+          -o sentinel-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./cmd/sentinel
       - name: sbom
         run: go list -m -json all > sbom-modules-${{ matrix.goos }}-${{ matrix.goarch }}.json
       - name: checksum
         shell: bash
-        run: sha256sum hearth-* sbom-*.json > SHA256SUMS-${{ matrix.goos }}-${{ matrix.goarch }}.txt
+        run: sha256sum sentinel-* sbom-*.json > SHA256SUMS-${{ matrix.goos }}-${{ matrix.goarch }}.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: hearth-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: sentinel-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
-            hearth-*
+            sentinel-*
             sbom-*.json
             SHA256SUMS-*.txt
   publish:

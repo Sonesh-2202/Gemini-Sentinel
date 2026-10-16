@@ -1,7 +1,7 @@
 // Package version carries build-stamped release metadata.
 // Set via ldflags at release time:
 //
-//	go build -ldflags "-X github.com/soneshsk/hearth/internal/version.Version=v1.2.3 -X github.com/soneshsk/hearth/internal/version.Commit=<sha> -X github.com/soneshsk/hearth/internal/version.Date=<rfc3339>" ./cmd/hearth
+//	go build -ldflags "-X github.com/sonesh-2202/gemini-sentinel/internal/version.Version=v1.2.3 -X github.com/sonesh-2202/gemini-sentinel/internal/version.Commit=<sha> -X github.com/sonesh-2202/gemini-sentinel/internal/version.Date=<rfc3339>" ./cmd/sentinel
 package version
 
 // Version is the semantic release version (dev when built without ldflags).
@@ -15,5 +15,5 @@ var Date = "unknown"
 
 // String returns a one-line build identifier safe to log and display.
 func String() string {
-	return "hearth " + Version + " (commit " + Commit + ", built " + Date + ")"
+	return "sentinel " + Version + " (commit " + Commit + ", built " + Date + ")"
 }

@@ -1,276 +1,304 @@
-# Hearth
+<div align="center">
 
-Use your Gemini web subscription from any OpenAI-compatible app — no browser automation, no 600 MB headless Chrome. Hearth is a small Go program by **Sonesh SK** that signs into `gemini.google.com` with your own browser cookies and serves them as `POST /v1/chat/completions` and `POST /v1/responses` on your own machine.
+# 🛡️ Gemini-Sentinel
 
-> **Security — read this first.**
-> Safe for local loopback use when configured and maintained correctly.
-> **Not safe for direct LAN or internet exposure.**
-> Browser cookies are passwords: anyone holding them can impersonate your Google session.
-> The server speaks plaintext HTTP, listens on loopback only (`127.0.0.1`, `::1`, `localhost`), and refuses to start on any other address.
-> For remote access, keep it on loopback behind a separately hardened HTTPS reverse proxy.
-> Details: `SECURITY.md`.
+**Use your Gemini web subscription from any OpenAI-compatible app — no browser automation, no 600 MB headless Chrome.**
 
-Hearth is a rebranded and extended fork of `gemini-stealth-bridge` (MIT, © 2026 azrinaldi — notice retained in `LICENSE`). What's new in Hearth: `hearth --status` preflight checks, `GET /metrics` (Prometheus), `POST /v1/count-tokens`, `HEARTH_*` settings, automatic migration from the old data directory, CI + tagged releases. See `CHANGELOG.md`.
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go)](./go.mod)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
+[![Transport](https://img.shields.io/badge/Transport-uTLS_%2B_HTTP%2F2-blue?style=flat-square)](#1-architecture--how-it-works)
+[![API](https://img.shields.io/badge/OpenAI-Compatible-412991?style=flat-square&logo=openai)](#7-making-your-first-api-calls)
+[![Bind](https://img.shields.io/badge/Bind-Loopback_Only-success?style=flat-square)](./SECURITY.md)
 
-**Upgrading from `gemini-stealth-bridge`?** Just build and run `hearth`: your accounts are copied from `~/.gemini-stealth-bridge` to `~/.hearth` on first start (originals untouched), old `BRIDGE_*` settings still work, and old `gsb-<name>` keys and `gsb/` model prefixes keep working.
+[Quick Start](#3-quick-start-build--configure) • [API Examples](#7-making-your-first-api-calls) • [Coding Agents](#12-coding-agents--9router-setup) • [Configuration](#14-configuration-reference) • [Troubleshooting](#16-troubleshooting)
 
----
-
-## Table of contents
-
-1. [How it works](#1-how-it-works-plain-english)
-2. [What you need](#2-what-you-need)
-3. [Step 1 — Build it](#3-step-1--build-it)
-4. [Step 2 — Create your admin key](#4-step-2--create-your-admin-key)
-5. [Step 3 — Connect your Google account](#5-step-3--connect-your-google-account)
-6. [Step 4 — Check the account works (`--probe`)](#6-step-4--check-the-account-works---probe)
-7. [Step 5 — Start the server](#7-step-5--start-the-server)
-8. [Step 6 — Make a model run (your first calls)](#8-step-6--make-a-model-run-your-first-calls)
-9. [Choosing a model](#9-choosing-a-model)
-10. [Thinking levels (`low` / `medium` / `high`)](#10-thinking-levels-low--medium--high)
-11. [Images, tools, long chats, token budgets](#11-images-tools-long-chats-token-budgets)
-12. [Observability (`--status`, `/metrics`)](#12-observability---status-metrics)
-13. [Using it with coding agents](#13-using-it-with-coding-agents)
-14. [Multiple Google accounts](#14-multiple-google-accounts)
-15. [Settings reference](#15-settings-reference)
-16. [Endpoints, keys, and limits](#16-endpoints-keys-and-limits)
-17. [When something goes wrong](#17-when-something-goes-wrong)
-18. [Everyday operations](#18-everyday-operations)
-19. [Testing, internals, license](#19-testing-internals-license)
+</div>
 
 ---
 
-## 1. How it works (plain English)
+**Gemini-Sentinel** (binary `sentinel`) is a lightweight local Go daemon by **Sonesh SK** that authenticates with `gemini.google.com` using your browser cookies and exposes an OpenAI-compatible gateway (`POST /v1/chat/completions` and `POST /v1/responses`) on your local machine.
 
-```
-Your app (curl, OpenCode, Cline, 9router…)
-        │  OpenAI-style HTTP on http://127.0.0.1:20133/v1
+> [!WARNING]
+> **Security & Unofficial Research Software Notice — Read First**
+> - **Unofficial Software:** This project is not affiliated with, endorsed by, or supported by Google. It relies on browser-session cookies, undocumented Gemini Web RPCs, and browser-fingerprint transport (`uTLS`), making it fundamentally different from the official Gemini API. Do not deploy it as a commercial or production service.
+> - **Loopback Only:** Safe for local loopback use (`127.0.0.1`, `::1`, `localhost`) when maintained properly. **Never expose port `20133` directly to a LAN or the internet.** The server speaks plaintext HTTP and intentionally refuses to start on non-loopback addresses.
+> - **Cookies are Passwords:** Anyone holding your browser cookies or account `.json` files can impersonate your Google session. For remote access, keep `sentinel` on loopback behind a separately hardened HTTPS reverse proxy. See [`SECURITY.md`](./SECURITY.md) for full details.
+
+> [!TIP]
+> **Upgrading from Hearth or `gemini-stealth-bridge` (`gsb`)?**
+> Gemini-Sentinel continues the Hearth and `gemini-stealth-bridge` line (MIT, © 2026 azrinaldi). Just build and run `sentinel`:
+> - Accounts automatically migrate from `~/.hearth` or `~/.gemini-stealth-bridge` to `~/.gemini-sentinel` on first start (originals are left untouched).
+> - Legacy `HEARTH_*` and `BRIDGE_*` environment variables, `hearth-<name>` / `gsb-<name>` API keys, and `hearth/` / `gsb/` model prefixes remain 100% backward-compatible.
+> - **What's New:** `sentinel --status` preflight checks, `GET /metrics` (Prometheus), `POST /v1/count-tokens`, `SENTINEL_*` settings, and automated CI/tagged releases. See [`CHANGELOG.md`](./CHANGELOG.md).
+
+---
+
+## ✨ Key Capabilities
+
+- **OpenAI-Compatible Endpoints:** Drop-in support for `/v1/chat/completions` and `/v1/responses` (streaming SSE & non-streaming).
+- **Zero Headless Browser Overhead:** Communicates directly via Chrome-fingerprinted `uTLS` (`chrome_150_psk`) + HTTP/2.
+- **Native Reasoning & Tool Calling:** Maps OpenAI `reasoning_effort` / `thinking` budgets (`low`, `medium`, `high`) and streams live thoughts + function calls.
+- **1M+ Context & Session Continuity:** Automatically offloads older conversation turns as text attachments and caches continuation tokens for instant multi-turn resumption.
+- **Multi-Account Isolation & Failover:** Per-account keys strictly isolate quota; the admin key unlocks load-balanced failover across accounts.
+- **Built-in Guardrails:** Rejects silent upstream model downgrades (`429 model_substitution`), blocks SSRF on remote image fetches, and enforces strict payload limits.
+- **Observability:** Offline `--status` preflight validation, live `--probe` quota checks, and `/metrics` Prometheus exposition.
+
+---
+
+## 📖 Table of Contents
+
+1. [Architecture & How It Works](#1-architecture--how-it-works)
+2. [Requirements](#2-requirements)
+3. [Quick Start: Build & Configure](#3-quick-start-build--configure)
+4. [Connect Your Google Account](#4-connect-your-google-account)
+5. [Verify Setup (`--probe` & `--status`)](#5-verify-setup---probe----status)
+6. [Start the Server](#6-start-the-server)
+7. [Making Your First API Calls](#7-making-your-first-api-calls)
+8. [Model Selection & Routing Tricks](#8-model-selection--routing-tricks)
+9. [Thinking Levels (`low` / `medium` / `high`)](#9-thinking-levels-low--medium--high)
+10. [Images, Tool Calling, Long Context & Token Budgets](#10-images-tool-calling-long-context--token-budgets)
+11. [Observability (`--status`, `/metrics`)](#11-observability---status-metrics)
+12. [Coding Agents & `9router` Setup](#12-coding-agents--9router-setup)
+13. [Multiple Google Accounts](#13-multiple-google-accounts)
+14. [Configuration Reference](#14-configuration-reference)
+15. [API Endpoints & Hard Limits](#15-api-endpoints--hard-limits)
+16. [Troubleshooting](#16-troubleshooting)
+17. [Everyday Operations & Security Hygiene](#17-everyday-operations--security-hygiene)
+18. [Development, Internals & Roadmap](#18-development-internals--roadmap)
+19. [Legal, Contributing & License](#19-legal-contributing--license)
+
+---
+
+## 1. Architecture & How It Works
+
+```text
+Your App (curl, OpenCode, Cline, Cursor, 9router…)
+        │
+        │  OpenAI-style HTTP on [http://127.0.0.1:20133/v1](http://127.0.0.1:20133/v1)
         ▼
-  ┌────────── hearth ────────┐
-  │ account keys → account   │
-  │ admin key → admin APIs   │
-  │ model + quota checks     │
-  │ prompt + tools builder   │
-  └──────────┬──────────────┘
-             │  Chrome-fingerprint HTTPS (uTLS + HTTP/2)
-             ▼
-   gemini.google.com (your own login session)
+  ┌──────────────── sentinel ────────────────┐
+  │ • Account keys  ──► Locked to 1 account  │
+  │ • Admin key     ──► Pool + Admin APIs    │
+  │ • Live model & quota validation          │
+  │ • Prompt offloader & tool bridge         │
+  └────────────────────┬─────────────────────┘
+                       │
+                       │  Chrome-fingerprint HTTPS (uTLS + HTTP/2)
+                       ▼
+           gemini.google.com (your web session)
 ```
 
-1. You log into Gemini once in your **real browser**.
-2. `hearth` copies that login's cookies into `~/.hearth/accounts/<name>.json`.
-3. Your apps talk to `hearth` exactly like they talk to OpenAI.
-4. `hearth` translates each request, sends it to Gemini as your browser would, and streams the answer back.
-5. Cookies are refreshed automatically in the background.
+1. **Authenticate once:** Log into Gemini in your normal desktop browser.
+2. **Import session:** `sentinel` extracts and decrypts your session cookies into `~/.gemini-sentinel/accounts/<name>.json`.
+3. **Connect clients:** Point any OpenAI-compatible SDK or coding agent to `http://127.0.0.1:20133/v1`.
+4. **Translate & Stream:** `sentinel` converts OpenAI payloads into Gemini Web RPCs, streams SSE deltas back in real time, and rotates cookies automatically in the background.
 
-Each account file gets **two API keys**: `hearth-<name>` and `<name>` (e.g. `hearth-acc1` and `acc1`). These keys only ever reach **that one account** — they cannot see or spend another account.
+Each imported account receives **two dedicated API keys**: `sentinel-<name>` and `<name>` (e.g., `sentinel-acc1` and `acc1`). Account keys are strictly isolated—they can never view or spend quota from another account.
 
 ---
 
-## 2. What you need
+## 2. Requirements
 
-- **Go 1.26 or newer** (`go version` to check; see `go.mod`). The toolchain self-provisions if network allows.
-- **A desktop browser** (Chrome, Brave, Chromium, Edge, or Firefox) with **one logged-in Google session** that can open `gemini.google.com/app`.
-- **Windows PowerShell**, macOS Terminal, or Linux shell, plus `curl` for testing.
-- Your machine only — never install this on a shared server without understanding `SECURITY.md`.
-
----
-
-## 3. Step 1 — Build it
-
-```sh
-git clone https://github.com/soneshsk/hearth.git
-cd hearth
-go build -o hearth ./cmd/hearth   # Windows: go build -o hearth.exe ./cmd/hearth
-./hearth --version                 # prints e.g. "hearth dev (commit unknown, …)"
-```
-
-Or install it onto your `PATH`:
-
-```sh
-go install github.com/soneshsk/hearth/cmd/hearth@latest
-```
-
-`./start.sh` also builds when needed and starts the server (see Step 5).
+- **Go 1.26 or newer** (check with `go version`; defined in [`go.mod`](./go.mod)).
+- **OS:** Windows (PowerShell), macOS, or Linux, plus `curl` for testing.
+- **Browser:** Chrome, Brave, Chromium, Edge, or Firefox with an active logged-in session at `gemini.google.com/app`.
+- **Environment:** A local machine you control (do not run as Administrator/root, and do not deploy on shared hosts without reviewing [`SECURITY.md`](./SECURITY.md)).
 
 ---
 
-## 4. Step 2 — Create your admin key
+## 3. Quick Start: Build & Configure
 
-There are **two kinds of keys**:
+### Step 1 — Build from Source
 
-| Key | What it unlocks | Example |
-|---|---|---|
-| **Account key** (`hearth-<name>` or `<name>`) | Chat, Responses, Models, token budgets — for that account only | `hearth-acc1` |
-| **Admin key** (`HEARTH_API_KEY`) | Everything above (all accounts) **plus** `/v1/accounts`, `/v1/quota`, `/v1/sessions`, `/v1/refresh`, `/metrics` | random 64-hex string |
-
-Account keys are created automatically when you add an account (Step 3). The admin key you create yourself:
+Do not run untrusted prebuilt binaries with access to your browser profile. Build directly from a reviewed checkout:
 
 ```sh
-# Print a strong random key (64 hex chars). Copy the output.
+git clone [https://github.com/Sonesh-2202/gemini-sentinel.git](https://github.com/Sonesh-2202/gemini-sentinel.git)
+cd gemini-sentinel
+go mod download
+
+# Linux / macOS
+go build -trimpath -o sentinel ./cmd/sentinel
+
+# Windows PowerShell
+go build -trimpath -o .\sentinel.exe .\cmd\sentinel
+
+# Verify build
+./sentinel --version
+```
+
+Alternatively, install directly to your `GOPATH/bin` (requires lowercase module path):
+
+```sh
+go install [github.com/sonesh-2202/gemini-sentinel/cmd/sentinel@latest](https://github.com/sonesh-2202/gemini-sentinel/cmd/sentinel@latest)
+```
+
+### Step 2 — Create Your Admin Key
+
+Gemini-Sentinel uses two key tiers:
+
+| Key Tier | Unlocks | Format / Example |
+| :--- | :--- | :--- |
+| **Account Key** | Chat, Responses, Models, Token Count (isolated to that single account) | `sentinel-acc1` or `acc1` *(auto-created)* |
+| **Admin Key** (`SENTINEL_API_KEY`) | All accounts (with failover) **+** `/v1/accounts`, `/v1/quota`, `/v1/sessions`, `/v1/refresh`, `/metrics` | 64-char random hex string *(you generate)* |
+
+Generate a strong 64-character hex key:
+
+```sh
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Then, every time you start the server, provide it:
+Export it before running the server (see [`config.example.env`](./config.example.env) for a template):
 
 ```sh
-export HEARTH_API_KEY="paste-your-key-here"   # PowerShell: $env:HEARTH_API_KEY="…"
+# Linux / macOS
+export SENTINEL_API_KEY="paste-your-64-char-hex-key-here"
+
+# Windows PowerShell
+$env:SENTINEL_API_KEY="paste-your-64-char-hex-key-here"
 ```
 
-Rules:
-
-- Minimum **16 characters**; `public`, `test`, `password`, etc. are rejected and the server **refuses to start**.
-- No admin key = admin endpoints answer `401`/`403`, while per-account chat keys keep working.
-- Send keys in **headers** (`Authorization: Bearer …`, `x-api-key: …`, `x-goog-api-key: …`). Keys in URLs (`?key=`) are **not accepted**.
-- A ready-to-copy template lives in `config.example.env`. Never commit a real key.
+> [!IMPORTANT]
+> **Admin Key Rules:**
+> - Must be **≥ 16 characters**. Weak keys (`public`, `test`, `password`, etc.) cause the server to **refuse startup**.
+> - If left unset, admin endpoints return `401`/`403` while per-account keys continue to work normally.
+> - Pass keys via HTTP headers (`Authorization: Bearer …`, `x-api-key: …`, or `x-goog-api-key: …`). Keys in URL query strings (`?key=`) are **rejected**.
 
 ---
 
-## 5. Step 3 — Connect your Google account
+## 4. Connect Your Google Account
 
-Pick **one** method. Method A is easiest.
+Choose **one** of the three methods below. You can repeat this step for multiple accounts (`acc1`, `acc2`, etc. — allowed characters: `A–Z a–z 0–9 . _ -`, max 64 chars).
 
-### Method A — Read cookies from your browser (recommended)
+### Method A — Direct Browser Import (Recommended)
 
-Close nothing; just be logged into Google in that browser profile first:
+Ensure you are logged into `gemini.google.com` in your browser—no need to close the browser window:
 
 ```sh
-./hearth --import-chrome acc1
+./sentinel --import-chrome acc1
 ```
 
-Multi-profile setups — tell it which profile:
+<details>
+<summary><b>Using Multiple Browser Profiles? (Click to expand)</b></summary>
+
+Specify the profile name or full directory path:
 
 ```sh
 # By profile name (Windows, macOS, Linux)
-./hearth --import-chrome acc1 --chrome-profile "Profile 4"
+./sentinel --import-chrome acc1 --chrome-profile "Profile 4"
 
 # By profile folder (Linux / macOS)
-./hearth --import-chrome acc1 --chrome-profile ~/.config/google-chrome/Default
+./sentinel --import-chrome acc1 --chrome-profile ~/.config/google-chrome/Default
 
 # By profile folder (Windows PowerShell / cmd)
-./hearth --import-chrome acc1 --chrome-profile "C:\Users\<you>\AppData\Local\Google\Chrome\User Data\Profile 4"
+.\sentinel.exe --import-chrome acc1 --chrome-profile "C:\Users\<you>\AppData\Local\Google\Chrome\User Data\Profile 4"
 ```
+</details>
 
-What just happened: `hearth` copied and decrypted the `google.com` cookies, tested them against Gemini (`/app` bootstrap), and saved `~/.hearth/accounts/acc1.json`. It prints your account email and the two API keys (`hearth-acc1`, `acc1`).
+`sentinel` extracts and decrypts your `google.com` cookies, verifies them against Gemini's `/app` bootstrap, saves `~/.gemini-sentinel/accounts/acc1.json` (permissions `0600`), and prints your email alongside your keys (`sentinel-acc1`, `acc1`).
 
-### Method B — Paste cookies via a browser extension
+### Method B — Import via Cookie Extension
 
-1. Install a "Cookie-Editor" style extension, open `google.com`, export cookies (JSON array) or copy the raw `Cookie:` header.
-2. Import it (needs at least `SAPISID` and `__Secure-1PSID`):
+Export your `google.com` cookies (JSON array or raw `Cookie:` header containing at least `SAPISID` and `__Secure-1PSID`) using a browser extension like Cookie-Editor:
 
 ```sh
-# From a file (raw header or Cookie-Editor JSON both work)
-./hearth --import-cookie acc1 --cookie-file ./cookies.json
+# From a JSON or text file (delete the file immediately after importing!)
+./sentinel --import-cookie acc1 --cookie-file ./cookies.json
 
-# Or paste the value directly
-./hearth --import-cookie acc1 --cookie-value "SAPISID=…; __Secure-1PSID=…; __Secure-1PSIDTS=…"
+# Or pass the raw cookie string directly
+./sentinel --import-cookie acc1 --cookie-value "SAPISID=…; __Secure-1PSID=…; __Secure-1PSIDTS=…"
 ```
 
-### Method C — Interactive login helper
+### Method C — Interactive Login Helper
 
 ```sh
-./hearth --login acc1
-./hearth --login acc1 --chrome-profile "Profile 4"   # multi-profile machines
+./sentinel --login acc1
+./sentinel --login acc1 --chrome-profile "Profile 4"   # for multi-profile setups
 ```
 
-This opens `https://gemini.google.com/app` in your browser. Sign in, press **Enter** in the terminal, and it imports from the browser profile (or paste a cookie line instead of pressing Enter empty).
-
-Repeat any method per Google account (`acc2`, `acc3`, …). Account names allow `A–Z a–z 0–9 . _ -`, max 64 chars.
+Opens `https://gemini.google.com/app` in your browser. Sign in, return to the terminal, and press **Enter** to auto-import (or paste a raw cookie string).
 
 ---
 
-## 6. Step 4 — Check the account works (`--probe`)
+## 5. Verify Setup (`--probe` & `--status`)
 
-Before starting the server, verify login, model list, and quota:
+Before launching the daemon, verify your account authentication, available models, and remaining quota:
 
 ```sh
-./hearth --probe
+./sentinel --probe
 ```
 
-Healthy output looks like:
+**Expected healthy output:**
 
 ```text
-Account acc1             email=user@example.com        capacity=2 models=4 fails=0
+Account acc1            email=user@example.com        capacity=2 models=4 fails=0
   - gemini-flash-lite        (Flash-Lite, id=…, cap=2)
   - gemini-flash             (Flash, id=…, cap=2)
   - gemini-pro               (Pro, id=…, cap=2)
   - gemini-argon             (Argon, id=…, cap=2)
-  quota: Gemini Pro         remaining=48384/48384 resets=2026-10-16T08:00:00Z
+  quota: Gemini Pro          remaining=48384/48384 resets=2026-10-16T08:00:00Z
 ```
 
-Write down the **model names** in the `- …` column — those are the exact strings your apps must send (plus the tricks in [Choosing a model](#9-choosing-a-model)).
+Note the exact model IDs listed (`gemini-flash`, `gemini-pro`, etc.). If `--probe` fails, check [Troubleshooting](#16-troubleshooting) before starting the server.
 
-If `--probe` fails, jump to [When something goes wrong](#17-when-something-goes-wrong) — do not start the server yet.
-
-Two more offline helpers (no network needed):
-
+**Additional CLI Helpers:**
 ```sh
-./hearth --status   # preflight: bind, admin key, accounts, next steps
-./hearth --rotate   # force one cookie-rotation round now (normally automatic)
+./sentinel --status   # Offline preflight check: validates bind address, admin key, and account files
+./sentinel --rotate   # Force an immediate cookie-rotation cycle (normally runs every 9 minutes)
 ```
 
 ---
 
-## 7. Step 5 — Start the server
+## 6. Start the Server
+
+Start via the helper script (builds automatically if needed) or invoke the binary directly:
 
 ```sh
-export HEARTH_API_KEY="paste-your-key-here"
+export SENTINEL_API_KEY="paste-your-key-here"
 ./start.sh
+# Or directly: ./sentinel (Windows: .\sentinel.exe)
 ```
 
-or directly:
-
-```sh
-export HEARTH_API_KEY="paste-your-key-here"
-./hearth
-```
-
-You should see:
+**Startup output:**
 
 ```text
-hearth (hearth dev …) listening on http://127.0.0.1:20133
+sentinel (sentinel dev …) listening on [http://127.0.0.1:20133](http://127.0.0.1:20133)
   transport: browserless Chrome uTLS + HTTP/2 (chrome_150_psk)
-  data:      /home/you/.hearth (1 account(s) loaded)
-  models:    http://127.0.0.1:20133/v1/models
+  data:      /home/you/.gemini-sentinel (1 account(s) loaded)
+  models:    [http://127.0.0.1:20133/v1/models](http://127.0.0.1:20133/v1/models)
 ```
 
-Sanity check in another terminal:
+Verify health in another terminal (no API key required for `/health`):
 
 ```sh
-curl -s http://127.0.0.1:20133/health
+curl -s [http://127.0.0.1:20133/health](http://127.0.0.1:20133/health)
 # {"accounts":1,"models":4,"status":"ok",…}
 ```
 
-`/health` needs no key. Everything else does. The server **will not start** on `HOST=0.0.0.0`, `::`, a LAN IP, or a public IP — that is intentional (plaintext HTTP).
-
 ---
 
-## 8. Step 6 — Make a model run (your first calls)
+## 7. Making Your First API Calls
 
-All examples assume the server runs at `http://127.0.0.1:20133` and your account is `acc1` (key `hearth-acc1`). Replace the model name with one from your `--probe` output.
+All examples assume the server is running on `http://127.0.0.1:20133` with account `acc1` (key `sentinel-acc1`).
 
-### 8.1 List models
+### 7.1 List Available Models
 
 ```sh
-curl -s http://127.0.0.1:20133/v1/models \
-  -H "Authorization: Bearer hearth-acc1" | python3 -m json.tool
+curl -s [http://127.0.0.1:20133/v1/models](http://127.0.0.1:20133/v1/models) \
+  -H "Authorization: Bearer sentinel-acc1" | python3 -m json.tool
 ```
 
-Expected: `{"object":"list","data":[{"id":"gemini-flash",…}, …]}`.
-
-### 8.2 Simple chat call (non-streaming)
+### 7.2 Chat Completions (Non-Streaming)
 
 ```sh
-curl -s http://127.0.0.1:20133/v1/chat/completions \
-  -H "Authorization: Bearer hearth-acc1" \
+curl -s [http://127.0.0.1:20133/v1/chat/completions](http://127.0.0.1:20133/v1/chat/completions) \
+  -H "Authorization: Bearer sentinel-acc1" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gemini-flash",
     "messages": [{"role": "user", "content": "Say OK if you can hear me."}]
   }'
 ```
-
-Expected shape:
 
 ```json
 {
@@ -286,13 +314,11 @@ Expected shape:
 }
 ```
 
-If `content` contains `reasoning_content` too, that is the model's thinking (see §10).
-
-### 8.3 Streaming call (watch tokens arrive)
+### 7.3 Chat Completions (Streaming SSE)
 
 ```sh
-curl -N http://127.0.0.1:20133/v1/chat/completions \
-  -H "Authorization: Bearer hearth-acc1" \
+curl -N [http://127.0.0.1:20133/v1/chat/completions](http://127.0.0.1:20133/v1/chat/completions) \
+  -H "Authorization: Bearer sentinel-acc1" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gemini-flash",
@@ -301,13 +327,13 @@ curl -N http://127.0.0.1:20133/v1/chat/completions \
   }'
 ```
 
-You will see `data: {…}` chunks ending with `data: [DONE]`. Each chunk's `choices[0].delta` holds `content` and/or `reasoning_content` pieces.
+Streams `data: {…}` SSE chunks ending in `data: [DONE]`, with `choices[0].delta` carrying incremental `content` and `reasoning_content` tokens.
 
-### 8.4 Responses API call
+### 7.4 OpenAI Responses API
 
 ```sh
-curl -s http://127.0.0.1:20133/v1/responses \
-  -H "Authorization: Bearer hearth-acc1" \
+curl -s [http://127.0.0.1:20133/v1/responses](http://127.0.0.1:20133/v1/responses) \
+  -H "Authorization: Bearer sentinel-acc1" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gemini-flash",
@@ -315,34 +341,34 @@ curl -s http://127.0.0.1:20133/v1/responses \
   }'
 ```
 
-Expected: `{"id":"resp_…","object":"response","status":"completed","output":[…],"usage":{…}}`. Add `"stream": true` and use `curl -N` for the SSE event stream (`response.created` → deltas → `response.completed`).
+Returns `{"id":"resp_…","object":"response","status":"completed","output":[…],"usage":{…}}`. Pass `"stream": true` with `curl -N` for the full event stream (`response.created` → deltas → `response.completed`).
 
-### 8.5 What each reply field means
+### 7.5 Understanding Response Codes & Fields
 
-- `finish_reason: "stop"` — normal answer. `"tool_calls"` — the model wants to call your tools (see §11).
-- `usage.completion_tokens_details.reasoning_tokens` — how much thinking was used.
-- HTTP `429 model_substitution` — Gemini silently served a different model than asked; `hearth` blocked it and tells you when to retry (`Retry-After`, `X-Resets-At`). Usually means that model's quota is spent.
-- HTTP `429 rate_limit_error` — quota bucket empty until the reset time shown.
-
----
-
-## 9. Choosing a model
-
-Use a name from `--probe` or `/v1/models` **exactly** (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`, …). Three conveniences also work:
-
-| Trick | Example | Meaning |
-|---|---|---|
-| `hearth/` prefix (for routers) | `"model": "hearth/gemini-pro"` | Prefix is stripped (`gsb/` still works) |
-| `@think=` suffix | `"model": "gemini-pro@think=high"` | One-call thinking override |
-| Empty model | `"model": ""` | First model on that account |
-
-Matching also accepts the upstream model ID or display name, case-insensitively. Unknown names return `404 model_not_found` naming the account that couldn't serve it.
+- `finish_reason: "stop"` — Standard completion. `"tool_calls"` — The model invoked one or more tools (see [§10](#10-images-tool-calling-long-context--token-budgets)).
+- `usage.completion_tokens_details.reasoning_tokens` — Estimated tokens spent on internal thinking.
+- `HTTP 429 model_substitution` — Gemini Web attempted to silently downgrade your requested model (typically due to depleted Pro quota). `sentinel` blocked the downgrade and returned `Retry-After` and `X-Resets-At` headers.
+- `HTTP 429 rate_limit_error` — Account quota bucket is exhausted until the indicated reset timestamp.
 
 ---
 
-## 10. Thinking levels (`low` / `medium` / `high`)
+## 8. Model Selection & Routing Tricks
 
-Gemini Web has exactly three thinking levels: `low` (1), `medium` (4), `high` (2). Set one per request any of these ways (first match wins; `@think=` suffix fills in when the body says nothing):
+Use any exact model slug from `--probe` or `/v1/models` (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`), or take advantage of these shorthands:
+
+| Feature | Example | Behavior |
+| :--- | :--- | :--- |
+| **Router Prefix** | `"model": "sentinel/gemini-pro"` | Prefix is stripped automatically (`hearth/` and `gsb/` also supported) |
+| **Inline Thinking Override** | `"model": "gemini-pro@think=high"` | Overrides thinking effort for that call if unset in the JSON body |
+| **Default Model Fallback** | `"model": ""` | Selects the first available model on that account |
+
+Model matching is case-insensitive and also accepts upstream model IDs or display names. Unrecognized models return `404 model_not_found` specifying which account failed the lookup.
+
+---
+
+## 9. Thinking Levels (`low` / `medium` / `high`)
+
+Gemini Web supports three discrete thinking levels: `low` (1), `medium` (4), and `high` (2). You can control reasoning effort per request using any of these formats (first match wins):
 
 ```json
 { "model": "gemini-pro", "reasoning_effort": "high", "messages": […] }
@@ -350,128 +376,133 @@ Gemini Web has exactly three thinking levels: `low` (1), `medium` (4), `high` (2
 { "model": "gemini-pro@think=medium", "messages": […] }
 ```
 
-- `budget_tokens` ≤ 4096 → `low`, ≤ 16384 → `medium`, above → `high`.
-- `thinking: {"type": "disabled"}` (or `reasoning: {"enabled": false}`) → `low`.
-- Default when you say nothing: `HEARTH_DEFAULT_THINKING` (`high` unless changed).
-- Reasoning streams as `reasoning_content` (Chat API) or `response.reasoning_summary_text.delta` (Responses API). Set `HEARTH_LIVE_THOUGHTS=false` to suppress it.
+- **Token Budget Mapping:** `budget_tokens` ≤ `4096` → `low` | ≤ `16384` → `medium` | `> 16384` → `high`.
+- **Disabling Thinking:** `thinking: {"type": "disabled"}` or `reasoning: {"enabled": false}` maps to `low`.
+- **Global Default:** Controlled by `SENTINEL_DEFAULT_THINKING` (defaults to `high`).
+- **Thought Streaming:** Thoughts stream via `reasoning_content` (Chat Completions) or `response.reasoning_summary_text.delta` (Responses API). Set `SENTINEL_LIVE_THOUGHTS=false` to suppress thought output.
 
 ---
 
-## 11. Images, tools, long chats, token budgets
+## 10. Images, Tool Calling, Long Context & Token Budgets
 
-**Images** — inline base64 or remote URLs inside message content:
+### Multimodal Image Input
+Pass inline base64 data URIs or remote `http(s)` image URLs:
 
 ```json
-{"role": "user", "content": [
-  {"type": "text", "text": "What is in this image?"},
-  {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0…"}}
-]}
+{
+  "role": "user",
+  "content": [
+    {"type": "text", "text": "What is in this image?"},
+    {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0…"}}
+  ]
+}
 ```
+*Security Guardrails:* Remote URLs are fetched server-side with a **20 MB cap**, max **5 redirects**, MIME validation, and full **SSRF protection** (loopback, private LAN, link-local, and cloud metadata IPs are blocked on initial connect and every redirect).
 
-Remote `http(s)` images are downloaded server-side (20 MB cap, 5 redirects, SSRF-guarded: loopback/private/reserved/metadata addresses blocked, redirects rechecked). Non-image content is rejected.
+### Tool / Function Calling
+Supports standard OpenAI `tools` and `tool_choice` (`auto`, `none`, `required`, or pinned function). Replies use `finish_reason: "tool_calls"` and stream incremental `tool_calls` deltas. Limits: **≤ 64 tools** and **≤ 256 KB per tool schema**.
 
-**Tool calling** — standard OpenAI `tools` + `tool_choice` (`auto`/`none`/`required`/single-function). The model replies with `finish_reason: "tool_calls"`. Streaming sends incremental `tool_calls` deltas. Keep it to ≤ 64 tools and ≤ 256 KB per tool schema.
+### 1M+ Context & Session Caching
+Supports up to ~1M characters inline. When history exceeds `SENTINEL_MAX_PROMPT_CHARS` (`850,000`), older turns are seamlessly compacted and uploaded as `text/plain` file attachments (≤ 340 KB each). Multi-turn chats resume instantly via cached continuation tokens (disable globally with `SENTINEL_SESSION_CACHE=false` or per request with `"temporary": true`).
 
-**Long chats** — up to ~1M characters inline; older turns are automatically offloaded as `text/plain` attachments (≤ 340 KB each), and multi-turn sessions resume via cached continuation tokens (disable with `HEARTH_SESSION_CACHE=false` or per-request `"temporary": true`).
-
-**Token budgets** — estimate cost before sending, no upstream call made:
+### Local Token Budgeting (`/v1/count-tokens`)
+Estimate token usage locally (~4 bytes/token) without making an upstream network call:
 
 ```sh
-curl -s http://127.0.0.1:20133/v1/count-tokens \
-  -H "Authorization: Bearer hearth-acc1" \
+curl -s [http://127.0.0.1:20133/v1/count-tokens](http://127.0.0.1:20133/v1/count-tokens) \
+  -H "Authorization: Bearer sentinel-acc1" \
   -H "Content-Type: application/json" \
   -d '{"messages": [{"role": "user", "content": "Summarize this thread."}]}'
 # {"characters":26,"object":"token_count","tokens":7}
 ```
-
-Accepts `text`, `input`, or `messages`. Uses the same ~4-bytes-per-token estimator as usage reporting. Account or admin key.
+Accepts `text`, `input`, or `messages`. Works with both account and admin keys.
 
 ---
 
-## 12. Observability (`--status`, `/metrics`)
+## 11. Observability (`--status`, `/metrics`)
 
-**Preflight without network:**
+### Offline Preflight (`--status`)
+Validate configuration before starting the daemon (exits non-zero if bind is non-loopback or admin key is weak; prints zero secrets):
 
 ```sh
-./hearth --status
-# hearth status (hearth dev …)
-#   bind:     ok (127.0.0.1:20133, loopback-only)
+./sentinel --status
+# sentinel status (sentinel dev …)
+#   bind:      ok (127.0.0.1:20133, loopback-only)
 #   admin key: set (64 chars)
-#   data:      /home/you/.hearth
-#   accounts:  1 file(s) in /home/you/.hearth/accounts
-#   next:      hearth --probe  (verify models & quota) then start the server
+#   data:      /home/you/.gemini-sentinel
+#   accounts:  1 file(s) in /home/you/.gemini-sentinel/accounts
+#   next:      sentinel --probe  (verify models & quota) then start the server
 ```
 
-Exits nonzero when the bind is invalid or the admin key is a placeholder/weak. Prints no secrets.
-
-**Prometheus metrics** (admin key only):
+### Prometheus Metrics (`/metrics`)
+Query live server metrics using the **admin key**:
 
 ```sh
-curl -s http://127.0.0.1:20133/metrics -H "Authorization: Bearer $HEARTH_API_KEY"
-# hearth_http_requests_total{method="GET",path="/v1/models",status="200"} 3
-# hearth_accounts 1
-# hearth_models 4
-# hearth_account_fails{id="acc1"} 0
+curl -s [http://127.0.0.1:20133/metrics](http://127.0.0.1:20133/metrics) -H "Authorization: Bearer $SENTINEL_API_KEY"
+# sentinel_http_requests_total{method="GET",path="/v1/models",status="200"} 3
+# sentinel_accounts 1
+# sentinel_models 4
+# sentinel_account_fails{id="acc1"} 0
 ```
 
-Scrape it with Prometheus or `node_exporter`'s textfile collector. Every response also carries `X-Request-ID`, matching the server's access log line (`method path status duration_ms`) — logs never contain tokens, cookies, prompts, or query strings. Set `HEARTH_LOG_LEVEL=error` (or `silent`) to disable access logs.
+Every HTTP response includes an `X-Request-ID` header matching the server's structured access log (`method path status duration_ms`). Logs never record API keys, cookies, prompts, or query strings. Set `SENTINEL_LOG_LEVEL=error` (or `silent`) to silence access logs.
 
 ---
 
-## 13. Using it with coding agents
+## 12. Coding Agents & `9router` Setup
 
-### Option A — Direct connection (simplest)
-
-Point any OpenAI-compatible client at the bridge:
+### Option A — Direct Agent Connection (Simplest)
+Works out of the box with **OpenCode, Cline, Cursor, Codex CLI, `omp`, and `curl`**:
 
 | Setting | Value |
-|---|---|
+| :--- | :--- |
 | **Base URL** | `http://127.0.0.1:20133/v1` |
-| **API Key** | `hearth-acc1` (or `acc1`) via `Authorization: Bearer …` |
-| **Model** | e.g. `gemini-argon`, optionally `gemini-pro@think=high` |
+| **API Key** | `sentinel-acc1` (single account) or your `$SENTINEL_API_KEY` (multi-account pool) |
+| **Model** | `gemini-argon`, `gemini-pro`, `gemini-pro@think=high`, etc. |
 
-Works with `omp`, Codex CLI, OpenCode, Cline, Cursor, and plain `curl`.
+### Option B — Multi-Account Pool via `9router`
 
-### Option B — Multi-account pool via `9router`
+<details>
+<summary><b>Click to expand 9router registration scripts & ~/.omp/agent/models.yml config</b></summary>
 
-1. In `9router` (`http://127.0.0.1:20128` → Providers → Add Compatible Provider): type `OpenAI Compatible`, API type `chat` (or `responses`), name `Hearth`, prefix `hearth`, base URL `http://127.0.0.1:20133/v1`. Or via `curl`:
+1. **Create the `Gemini-Sentinel` Provider Node in `9router`** (`http://127.0.0.1:20128`):
 
 ```sh
-NODE_ID=$(curl -s -X POST http://127.0.0.1:20128/api/provider-nodes \
+NODE_ID=$(curl -s -X POST [http://127.0.0.1:20128/api/provider-nodes](http://127.0.0.1:20128/api/provider-nodes) \
   -H "Content-Type: application/json" \
-  -d '{"type":"openai-compatible","apiType":"chat","name":"Hearth","prefix":"hearth","baseUrl":"http://127.0.0.1:20133/v1"}' \
+  -d '{"type":"openai-compatible","apiType":"chat","name":"Gemini-Sentinel","prefix":"sentinel","baseUrl":"[http://127.0.0.1:20133/v1](http://127.0.0.1:20133/v1)"}' \
   | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).node.id')
 echo "Node: $NODE_ID"
 ```
 
-2. Register one provider entry per Google account:
+2. **Register each Google account as a provider entry:**
 
 ```sh
-NODE_ID=$(curl -s http://127.0.0.1:20128/api/provider-nodes \
-  | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).nodes.find(n => n.prefix === "hearth").id')
-for f in ~/.hearth/accounts/*.json; do
+NODE_ID=$(curl -s [http://127.0.0.1:20128/api/provider-nodes](http://127.0.0.1:20128/api/provider-nodes) \
+  | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).nodes.find(n => n.prefix === "sentinel").id')
+for f in ~/.gemini-sentinel/accounts/*.json; do
   [ -e "$f" ] || continue
   acc="$(basename "$f" .json)"
-  curl -s -X POST http://127.0.0.1:20128/api/providers \
+  curl -s -X POST [http://127.0.0.1:20128/api/providers](http://127.0.0.1:20128/api/providers) \
     -H "Content-Type: application/json" \
-    -d "{\"provider\":\"$NODE_ID\",\"name\":\"hearth-$acc\",\"apiKey\":\"hearth-$acc\",\"priority\":1,\"allowOverwrite\":true}"
+    -d "{\"provider\":\"$NODE_ID\",\"name\":\"sentinel-$acc\",\"apiKey\":\"sentinel-$acc\",\"priority\":1,\"allowOverwrite\":true}"
   echo
 done
 ```
 
-3. Example agent config (`~/.omp/agent/models.yml`):
+3. **Configure your agent (`~/.omp/agent/models.yml`):**
 
 ```yaml
 providers:
   9router-local:
-    baseUrl: http://127.0.0.1:20128/v1
+    baseUrl: [http://127.0.0.1:20128/v1](http://127.0.0.1:20128/v1)
     apiKey: <your-9router-api-key>
     api: openai-completions
     compat:
       supportsReasoningEffort: true
     models:
-      - id: hearth/gemini-argon
-        name: hearth/gemini-argon
+      - id: sentinel/gemini-argon
+        name: sentinel/gemini-argon
         reasoning: true
         thinking:
           mode: effort
@@ -482,136 +513,155 @@ providers:
         compat:
           supportsReasoningEffort: true
 ```
+</details>
 
 ---
 
-## 14. Multiple Google accounts
+## 13. Multiple Google Accounts
 
-Add each account (`acc1`, `acc2`, …) via Step 3 and re-probe. Routing rules:
+Import additional accounts (`acc2`, `acc3`, …) using [Step 4](#4-connect-your-google-account) and verify with `./sentinel --probe`.
 
-- An **account key** always uses its own account. If that account can't serve the model/quota, the request fails — it never silently spends another account.
-- The **admin key** may use any account with automatic failover and least-busy preference plus session-cache affinity for continuing chats.
-- List accounts/quota only with the admin key:
+- **Account Keys (`sentinel-acc1`):** Strictly pinned to that single account. If `acc1` runs out of quota, the request fails immediately—it will never spill over to `acc2`.
+- **Admin Key (`$SENTINEL_API_KEY`):** Automatically routes across all loaded accounts using least-busy selection, automatic failover on errors/quota exhaustion, and session-cache affinity for active multi-turn threads.
 
+**Admin Management Commands:**
 ```sh
-curl -s http://127.0.0.1:20133/v1/accounts -H "Authorization: Bearer $HEARTH_API_KEY"
-curl -s http://127.0.0.1:20133/v1/quota    -H "Authorization: Bearer $HEARTH_API_KEY"
-curl -s http://127.0.0.1:20133/v1/sessions -H "Authorization: Bearer $HEARTH_API_KEY"
-curl -s http://127.0.0.1:20133/metrics     -H "Authorization: Bearer $HEARTH_API_KEY"
-curl -s -X POST http://127.0.0.1:20133/v1/refresh -H "Authorization: Bearer $HEARTH_API_KEY"
+curl -s [http://127.0.0.1:20133/v1/accounts](http://127.0.0.1:20133/v1/accounts) -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s [http://127.0.0.1:20133/v1/quota](http://127.0.0.1:20133/v1/quota)    -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s [http://127.0.0.1:20133/v1/sessions](http://127.0.0.1:20133/v1/sessions) -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s [http://127.0.0.1:20133/metrics](http://127.0.0.1:20133/metrics)     -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s -X POST [http://127.0.0.1:20133/v1/refresh](http://127.0.0.1:20133/v1/refresh) -H "Authorization: Bearer $SENTINEL_API_KEY"
 ```
 
 ---
 
-## 15. Settings reference
+## 14. Configuration Reference
 
-`HEARTH_*` wins; older `BRIDGE_*` (and `HOST`/`PORT`) still work.
+`SENTINEL_*` takes precedence; legacy `HEARTH_*` and `BRIDGE_*` (plus `HOST`/`PORT`) remain supported. See [`config.example.env`](./config.example.env).
 
-| Variable | Default | What it does |
-|---|---|---|
-| `HEARTH_HOST` / `BRIDGE_HOST` / `HOST` | `127.0.0.1` | Bind address. Anything non-loopback refuses startup (plaintext HTTP) |
-| `HEARTH_PORT` / `BRIDGE_PORT` / `PORT` | `20133` | Listen port |
-| `HEARTH_HOME` / `BRIDGE_HOME` | `~/.hearth` | Data dir for `accounts/*.json` + `session-cache.json` (auto-migrates from `~/.gemini-stealth-bridge`) |
-| `HEARTH_API_KEY` / `BRIDGE_API_KEY` | *(empty)* | **Admin** key for accounts/quota/sessions/refresh/metrics. ≥ 16 random chars; `public`/short = fatal; empty = admin endpoints deny all |
-| `HEARTH_ACCOUNT_TOKENS` / `BRIDGE_ACCOUNT_TOKENS` | auto from `accounts/*.json` | `token:account` pairs. Set to lock the token set |
-| `HEARTH_LOG_LEVEL` / `BRIDGE_LOG_LEVEL` | `info` | `info` = method/path/status/duration per request (never secrets); `error`/`silent` = quiet |
-| `HEARTH_IMPERSONATE` / `BRIDGE_IMPERSONATE` | `chrome_150_psk` | uTLS profile (`chrome_150_psk`, `chrome_146`, `chrome_133`, `firefox_135`, `safari_18_0`) |
-| `HEARTH_PROXY_SERVER` / `BRIDGE_PROXY_SERVER` | *(empty)* | Outbound `http://` or `socks5://` proxy for Gemini traffic |
-| `HEARTH_DEFAULT_THINKING` | `high` | Default thinking (`low`/`medium`/`high`) |
-| `HEARTH_REJECT_DOWNGRADE` | `true` | Block silent model swaps with `429 model_substitution` |
-| `HEARTH_LIVE_THOUGHTS` | `true` | Stream `reasoning_content` / reasoning-summary deltas |
-| `HEARTH_SESSION_CACHE` | `true` | Resume multi-turn sessions via cached continuation tokens |
-| `HEARTH_TOOL_PREAMBLE` | `false` | Keep pre-tool text as answer (`true`) or move it to reasoning (`false`) |
-| `HEARTH_MAX_PROMPT_CHARS` | `850000` | Inline budget before old turns offload to attachments |
-| `HEARTH_MAX_OLD_TOOL_CHARS` | `32000` | Cap per old tool output before compaction |
-| `HEARTH_FIRST_BYTE_TIMEOUT_MS` | `60000` | Give up waiting for first upstream bytes after this |
-| `HEARTH_STALL_TIMEOUT_MS` | `90000` | Fail over if no generation frame arrives within this |
-| `HEARTH_STREAM_TIMEOUT_MS` | `600000` | Max lifetime of one generation request |
-| `HEARTH_ROTATE_COOKIES_MS` | `540000` | Cookie-rotation interval (9 min) |
-| `HEARTH_MODEL_REFRESH_MS` | `600000` | Model/quota refresh interval (10 min) |
-
-A copy-paste template without secrets is in `config.example.env`.
+| Variable (Fallbacks) | Default | Description |
+| :--- | :--- | :--- |
+| `SENTINEL_HOST` (`HEARTH_HOST`, `BRIDGE_HOST`, `HOST`) | `127.0.0.1` | Bind address. Non-loopback values refuse startup. |
+| `SENTINEL_PORT` (`HEARTH_PORT`, `BRIDGE_PORT`, `PORT`) | `20133` | Local HTTP listen port. |
+| `SENTINEL_HOME` (`HEARTH_HOME`, `BRIDGE_HOME`) | `~/.gemini-sentinel` | Data directory for `accounts/*.json` & `session-cache.json`. |
+| `SENTINEL_API_KEY` (`HEARTH_API_KEY`, `BRIDGE_API_KEY`) | *(empty)* | Admin key (≥ 16 chars). Weak keys fail startup; empty denies admin routes. |
+| `SENTINEL_ACCOUNT_TOKENS` | *Auto-derived* | Explicit `token:account` pairs to lock the token set. |
+| `SENTINEL_LOG_LEVEL` | `info` | `info` logs `method path status duration_ms`; `error` / `silent` suppresses. |
+| `SENTINEL_IMPERSONATE` | `chrome_150_psk` | uTLS fingerprint (`chrome_150_psk`, `chrome_146`, `chrome_133`, `firefox_135`, `safari_18_0`). |
+| `SENTINEL_PROXY_SERVER` | *(empty)* | Outbound `http://` or `socks5://` proxy for Gemini traffic. |
+| `SENTINEL_DEFAULT_THINKING` | `high` | Default reasoning level (`low`, `medium`, `high`). |
+| `SENTINEL_REJECT_DOWNGRADE` | `true` | Reject silent upstream model swaps with `429 model_substitution`. |
+| `SENTINEL_LIVE_THOUGHTS` | `true` | Stream `reasoning_content` / reasoning summary deltas. |
+| `SENTINEL_SESSION_CACHE` | `true` | Persist multi-turn continuation state across requests. |
+| `SENTINEL_TOOL_PREAMBLE` | `false` | Keep pre-tool text as main answer (`true`) or move to reasoning (`false`). |
+| `SENTINEL_MAX_PROMPT_CHARS` | `850000` | Inline character budget before older turns offload to file attachments. |
+| `SENTINEL_MAX_OLD_TOOL_CHARS` | `32000` | Max characters per historical tool output before compaction. |
+| `SENTINEL_FIRST_BYTE_TIMEOUT_MS` | `60000` | Timeout waiting for initial upstream response bytes (60s). |
+| `SENTINEL_STALL_TIMEOUT_MS` | `90000` | Streaming stall timeout before triggering failover (90s). |
+| `SENTINEL_STREAM_TIMEOUT_MS` | `600000` | Maximum total lifetime of a single generation request (10m). |
+| `SENTINEL_ROTATE_COOKIES_MS` | `540000` | Background cookie rotation interval (9m). |
+| `SENTINEL_MODEL_REFRESH_MS` | `600000` | Background model & quota catalog refresh interval (10m). |
 
 ---
 
-## 16. Endpoints, keys, and limits
+## 15. API Endpoints & Hard Limits
 
-| Method | Path | Needs | Notes |
-|---|---|---|---|
-| `GET` | `/health` | nothing | Status, profile, account/model counts |
-| `GET` | `/v1/models` | account or admin | Live `otAQ7b` catalog; 1,048,576 context |
-| `POST` | `/v1/chat/completions` | account or admin | Chat API, SSE streaming, tools, images |
-| `POST` | `/v1/responses` | account or admin | Responses API, reasoning + function-call events |
-| `POST` | `/v1/count-tokens` | account or admin | Local token budgeting, no upstream call |
-| `GET` | `/metrics` | **admin only** | Prometheus exposition |
-| `GET` | `/v1/accounts` | **admin only** | Account keys get `403` |
-| `GET` | `/v1/quota` | **admin only** | Live `qpEbW` buckets |
-| `GET` | `/v1/sessions` | **admin only** | Transport pool diagnostics |
-| `POST` | `/v1/refresh` | **admin only** | Reload accounts + refresh models |
+| Method | Path | Auth Required | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/health` | None | Service health, transport profile, account & model counts |
+| `GET` | `/v1/models` | Account or Admin | Live `otAQ7b` model catalog (1,048,576 context window) |
+| `POST` | `/v1/chat/completions` | Account or Admin | OpenAI Chat Completions (SSE streaming, tools, vision, reasoning) |
+| `POST` | `/v1/responses` | Account or Admin | OpenAI Responses API (reasoning & function-call events) |
+| `POST` | `/v1/count-tokens` | Account or Admin | Local token & character estimator (zero upstream traffic) |
+| `GET` | `/metrics` | **Admin Only** | Prometheus metrics exposition |
+| `GET` | `/v1/accounts` | **Admin Only** | Account health, fail counts, and status (`403` for account keys) |
+| `GET` | `/v1/quota` | **Admin Only** | Live `qpEbW` quota buckets and reset timestamps |
+| `GET` | `/v1/sessions` | **Admin Only** | HTTP/2 transport pool & session diagnostics |
+| `POST` | `/v1/refresh` | **Admin Only** | Hot-reload account JSON files and refresh upstream model catalogs |
 
-Hard limits (violations → `400`/`413`/`429`): 32 MB body, 500 messages, 64 tools, 256 KB per tool schema, 20 MB per remote image, 5 image redirects, timeouts above. Every response carries `X-Request-ID` for correlating with server logs.
-
----
-
-## 17. When something goes wrong
-
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `refusing non-loopback bind` at startup | `HOST` is LAN/public/wildcard | Keep loopback; use a reverse proxy for remote |
-| `refusing to start with … admin key` | `public` or < 16 chars | Generate a fresh key (§4) |
-| `401 invalid api key` | Wrong/missing header, or `?key=` URL | Use a header; check `hearth-<name>` spelling |
-| `403 admin authorization required` | Account key on admin endpoint | Use `HEARTH_API_KEY` |
-| `404 model_not_found` | Name not on that account | Re-run `--probe`; copy exact name |
-| `429 model_substitution` | Quota spent; upstream swapped models | Wait until `X-Resets-At`, try another model/account |
-| `429 rate_limit_error` / `Retry-After` | Bucket empty | Same as above |
-| `502 upstream_auth_error` / bootstrap fails | Cookies expired/revoked | Re-import (§5), then `--probe` |
-| `502 model_identity_unknown` | Upstream hid model identity | Retry; strict mode requires identity proof |
-| `empty/incomplete upstream` errors | Transient upstream cut | Retry once; check network/proxy |
-| `session_busy 429` | Account saturated | Wait 2 s (`retry-after`) or add accounts |
-
-Still stuck? Re-run `./hearth --probe` and read the per-model error lines — they name the failing account and reason. Never paste cookies, keys, or prompts into bug reports.
+**Hard Request Limits** *(violations return `400`, `413`, or `429`)*:
+- **Max Request Body:** 32 MB
+- **Max Messages:** 500 per request
+- **Max Tools:** 64 tools (max 256 KB schema per tool)
+- **Max Remote Image:** 20 MB (max 5 redirects, SSRF-guarded)
 
 ---
 
-## 18. Everyday operations
+## 16. Troubleshooting
 
-- **Back up** `~/.hearth/accounts/` before upgrades.
-- **Revoke one account:** delete `accounts/<name>.json`, then `POST /v1/refresh` with the admin key.
-- **Wipe everything:** stop the daemon, delete `HEARTH_HOME`.
-- **Cookies leaked?** Follow `SECURITY.md`: revoke Google sessions, delete files, rotate `HEARTH_API_KEY`, re-import from a clean profile, check account activity.
-- **Remote access:** no built-in remote mode — keep loopback, terminate TLS at a reviewed proxy (HTTPS only, managed certs + rotation, strong proxy auth, rate/size limits, no secret logging).
-- **Releases:** tagged builds for Windows/Linux/macOS with SHA-256 and a module SBOM come from `.github/workflows/release.yml`; checklist and verification in `docs/RELEASE.md`. Verify a download with `Get-FileHash hearth.exe -Algorithm SHA256` against the published hash.
+| Symptom / Error | Likely Cause | Resolution |
+| :--- | :--- | :--- |
+| `refusing non-loopback bind` at startup | `HOST` is set to `0.0.0.0`, `::`, or a LAN IP | Bind to `127.0.0.1`, `::1`, or `localhost`. Use a hardened HTTPS reverse proxy for remote access. |
+| `refusing to start with … admin key` | `SENTINEL_API_KEY` is `< 16` chars or a placeholder (`public`) | Generate a 64-char hex key ([§3 Step 2](#step-2--create-your-admin-key)). |
+| `401 invalid api key` | Missing auth header, typo in key, or `?key=` in URL | Pass `Authorization: Bearer sentinel-<name>` in headers. |
+| `403 admin authorization required` | Account key used on `/v1/accounts`, `/v1/quota`, or `/metrics` | Authenticate with `$SENTINEL_API_KEY`. |
+| `404 model_not_found` | Requested model is unavailable on that Google account | Run `./sentinel --probe` and copy the exact model slug. |
+| `429 model_substitution` | Quota depleted; Gemini tried to silently swap models | Wait until `X-Resets-At`, switch models, or use an admin key with multiple accounts. |
+| `429 rate_limit_error` / `session_busy` | Quota bucket empty or account concurrency saturated | Respect `Retry-After` (2s for busy sessions) or add another account. |
+| `502 upstream_auth_error` | Session cookies expired or revoked by Google | Re-import cookies ([§4](#4-connect-your-google-account)) and verify with `./sentinel --probe`. |
+| `502 model_identity_unknown` | Upstream response omitted model identity proof | Retry request; disable strict checking only if necessary via `SENTINEL_REJECT_DOWNGRADE=false`. |
+
+Still stuck? Run `./sentinel --probe` to inspect per-account and per-model diagnostics. **Never paste cookies, API keys, or private prompts into GitHub issues.**
 
 ---
 
-## 19. Testing, internals, license
+## 17. Everyday Operations & Security Hygiene
+
+- **Backups:** Back up `~/.gemini-sentinel/accounts/` before major upgrades.
+- **Revoking an Account:** Delete `~/.gemini-sentinel/accounts/<name>.json` and call `POST /v1/refresh` with your admin key.
+- **Full Uninstall / Wipe:** Stop `sentinel` and delete `~/.gemini-sentinel`.
+- **Credential Leak Response:** If an account `.json` or cookie export is exposed, immediately log out of the Google session in your browser (revoking the server token), delete the local files, rotate `SENTINEL_API_KEY`, and review [`SECURITY.md`](./SECURITY.md).
+- **Verifying Releases:** Tagged releases for Windows, Linux, and macOS include SHA-256 checksums and a module SBOM via `.github/workflows/release.yml` (see [`docs/RELEASE.md`](./docs/RELEASE.md)). Verify binaries before execution:
+  ```powershell
+  Get-FileHash .\sentinel.exe -Algorithm SHA256
+  ```
+
+---
+
+## 18. Development, Internals & Roadmap
+
+### Running Tests & Static Analysis
+All tests run offline against synthetic fixtures and mocks—never real Google credentials:
 
 ```sh
 go vet ./...
 go test -count=1 ./...
 go test -race -count=1 ./...
 ```
+CI enforces `gofmt`, `go vet`, `-race` tests, and `govulncheck` on every push.
 
-CI runs the same plus `gofmt` and `govulncheck` on every push. Tests never touch real Google credentials or real browser cookies.
+### Codebase Architecture
 
-| Package / File | Job |
-|---|---|
-| `cmd/hearth/main.go` | CLI (`--probe`, `--rotate`, `--status`, `--login`, `--import-chrome`, `--import-cookie`, `--version`), migration, bind/auth startup gates, graceful shutdown |
-| `internal/config/config.go` | `HEARTH_*`/`BRIDGE_*` env config, loopback validation, timeout defaults, OS-matched browser headers |
-| `internal/cookies/jar.go` | Cookie parsing/canonicalization, `SAPISIDHASH`, atomic `0600` credential saves |
-| `internal/cookies/rotate.go` | Dual-path rotation (`__Secure-1PSIDTS`, `SIDCC`) |
-| `internal/cookies/chrome_sqlite.go` | Browser SQLite extraction + AES decryption (Chrome/Brave/Edge/Firefox) |
-| `internal/transport/client.go` | `Chrome_150_PSK` uTLS + HTTP/2, header order, first-byte/stall timeouts |
-| `internal/transport/session.go` | Per-account pool, bounded queues, idle reaping |
-| `internal/gemini/models.go` | Live catalog, capacity, thinking-level mapping |
-| `internal/gemini/client.go` | Auth bootstrap, `batchexecute` (`otAQ7b`, `qpEbW`), cookie absorption |
-| `internal/gemini/stream.go` | `StreamGenerate` payloads, live frames, file uploads |
-| `internal/gemini/parser.go` | `wrb.fr` parsing, reasoning extraction, model-identity checks |
-| `internal/prompt/prompt.go` | Prompt flattening, 1M-context offload, SSRF-guarded image fetch |
-| `internal/toolbridge/` | Tool validation, schema checks, streaming tool-call deltas |
-| `internal/server/` | Router + auth, chat/responses/count-tokens handlers, metrics, quota/session logic, caches |
-| `internal/version/version.go` | Build-stamped version info |
+| Package / Path | Responsibility |
+| :--- | :--- |
+| [`cmd/sentinel/main.go`](./cmd/sentinel/main.go) | CLI flags (`--probe`, `--rotate`, `--status`, `--login`, `--import-*`, `--version`), directory migration, startup security gates, graceful shutdown |
+| [`internal/config`](./internal/config) | `SENTINEL_*` / `HEARTH_*` / `BRIDGE_*` env resolution, loopback validation, OS-matched browser headers |
+| [`internal/cookies`](./internal/cookies) | Cookie canonicalization, `SAPISIDHASH`, atomic `0600` persistence, dual-path rotation (`__Secure-1PSIDTS`, `SIDCC`), SQLite/AES browser decryption |
+| [`internal/transport`](./internal/transport) | `Chrome_150_PSK` uTLS + HTTP/2 client, header ordering, per-account session pools, bounded queues |
+| [`internal/gemini`](./internal/gemini) | Auth bootstrap, `batchexecute` (`otAQ7b` models, `qpEbW` quota), `StreamGenerate`, `wrb.fr` parser, model-identity verification |
+| [`internal/prompt`](./internal/prompt) | Message normalization, 1M-context attachment offloading, SSRF-guarded remote image fetching |
+| [`internal/toolbridge`](./internal/toolbridge) | OpenAI tool schema validation and streaming tool-call delta translation |
+| [`internal/server`](./internal/server) | HTTP router, bearer/header auth, Chat/Responses/Token handlers, Prometheus metrics, session cache |
+| [`internal/version`](./internal/version) | Build-stamped version and commit metadata |
 
-MIT License — © 2026 azrinaldi (original `gemini-stealth-bridge`) and © 2026 Sonesh SK (Hearth). See [LICENSE](./LICENSE). When the GitHub remote is ready, the module path `github.com/soneshsk/hearth` in `go.mod` and the clone URL above are the two places to point at the final owner.
+### Architectural Roadmap (Toward an Official API Gateway)
+Gemini-Sentinel is currently an experimental research adapter. For commercial or policy-compliant production deployments, the long-term architectural path replaces browser-cookie extraction and undocumented web RPCs with an official API backend while retaining the local OpenAI-compatible gateway, tool bridge, and observability layer:
 
-**Legal note:** automating `gemini.google.com` sessions may violate Google's Terms of Service and risk quota loss or account action. Use only accounts you control, respect rate limits, keep the bridge on your own machine. Software is provided as-is with no safety guarantees.
+```text
+Official Gemini API  ──►  Provider Abstraction  ──►  Local OpenAI-Compatible Gateway
+```
+
+---
+
+## 19. Legal, Contributing & License
+
+### Legal & Policy Disclaimer
+Automating `gemini.google.com` web sessions may violate the [Google Terms of Service](https://policies.google.com/terms), [Generative AI Additional Terms](https://policies.google.com/terms/generative-ai), or account policies, and carries the risk of quota restrictions or account suspension. Use only with accounts you are authorized to control, respect rate limits, do not use for bulk scraping or abuse, and keep the daemon restricted to your local machine. Provided **AS-IS** without warranty of any kind.
+
+### Contributing
+Contributions that improve security, correctness, documentation, testing, or maintainability are welcome. Do not submit PRs designed to bypass quotas/safeguards, harvest credentials, or conceal abusive traffic. Always include unit tests and never commit real credentials or session fixtures.
+
+### License
+Released under the [MIT License](./LICENSE).
+- © 2026 **Sonesh SK** (`Gemini-Sentinel`)
+- © 2026 **azrinaldi** (original Hearth / `gemini-stealth-bridge`)

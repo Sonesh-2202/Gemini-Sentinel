@@ -18,11 +18,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/config"
-	"github.com/soneshsk/hearth/internal/cookies"
-	"github.com/soneshsk/hearth/internal/gemini"
-	"github.com/soneshsk/hearth/internal/prompt"
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/config"
+	"github.com/sonesh-2202/gemini-sentinel/internal/cookies"
+	"github.com/sonesh-2202/gemini-sentinel/internal/gemini"
+	"github.com/sonesh-2202/gemini-sentinel/internal/prompt"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 var reSafeID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
@@ -166,6 +166,15 @@ func tokenEquals(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
+func hasLegacyTokenPrefix(token string) bool {
+	for _, prefix := range config.LegacyTokenPrefixes {
+		if strings.HasPrefix(token, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // ResolveAuthScope resolves the caller's API key into an AuthScope using
 // constant-time comparisons. Empty, "public", and unknown tokens fail closed.
 func (s *Server) ResolveAuthScope(r *http.Request) AuthScope {
@@ -191,9 +200,9 @@ func (s *Server) ResolveAuthScope(r *http.Request) AuthScope {
 		return AuthScope{OK: true, Admin: true}
 	}
 
-	// Hot-load newly added account files on the fly when not locked by explicit BRIDGE_ACCOUNT_TOKENS,
+	// Hot-load newly added account files on the fly when not locked by explicit SENTINEL_ACCOUNT_TOKENS,
 	// rate-limited to avoid disk/SQLite scans on repeated invalid tokens.
-	if !explicitTokens && (strings.HasPrefix(token, config.TokenPrefix) || strings.HasPrefix(token, config.LegacyPrefix) || reSafeID.MatchString(token)) {
+	if !explicitTokens && (strings.HasPrefix(token, config.TokenPrefix) || hasLegacyTokenPrefix(token) || reSafeID.MatchString(token)) {
 		s.mu.RLock()
 		canReload := time.Since(s.lastHotLoadAt) >= 2*time.Second
 		s.mu.RUnlock()
@@ -276,8 +285,8 @@ func promLabel(v string) string {
 // plus account/model gauges. Admin authorization only.
 func (s *Server) serveMetrics(w http.ResponseWriter) {
 	var b strings.Builder
-	b.WriteString("# HELP hearth_http_requests_total Total HTTP requests by method, path and status.\n")
-	b.WriteString("# TYPE hearth_http_requests_total counter\n")
+	b.WriteString("# HELP sentinel_http_requests_total Total HTTP requests by method, path and status.\n")
+	b.WriteString("# TYPE sentinel_http_requests_total counter\n")
 	s.metrics.mu.Lock()
 	keys := make([]string, 0, len(s.metrics.requests))
 	for k := range s.metrics.requests {
@@ -293,18 +302,18 @@ func (s *Server) serveMetrics(w http.ResponseWriter) {
 		s.metrics.mu.Lock()
 		n := s.metrics.requests[k]
 		s.metrics.mu.Unlock()
-		fmt.Fprintf(&b, "hearth_http_requests_total{method=%q,path=%q,status=%q} %d\n",
+		fmt.Fprintf(&b, "sentinel_http_requests_total{method=%q,path=%q,status=%q} %d\n",
 			promLabel(parts[0]), promLabel(parts[1]), promLabel(parts[2]), n)
 	}
 	accts := s.Accounts()
-	fmt.Fprintf(&b, "# HELP hearth_accounts Loaded accounts.\n# TYPE hearth_accounts gauge\nhearth_accounts %d\n", len(accts))
-	fmt.Fprintf(&b, "# HELP hearth_models Known models across accounts.\n# TYPE hearth_models gauge\nhearth_models %d\n", len(s.allModels()))
-	b.WriteString("# HELP hearth_account_fails Consecutive failures per account.\n# TYPE hearth_account_fails gauge\n")
+	fmt.Fprintf(&b, "# HELP sentinel_accounts Loaded accounts.\n# TYPE sentinel_accounts gauge\nsentinel_accounts %d\n", len(accts))
+	fmt.Fprintf(&b, "# HELP sentinel_models Known models across accounts.\n# TYPE sentinel_models gauge\nsentinel_models %d\n", len(s.allModels()))
+	b.WriteString("# HELP sentinel_account_fails Consecutive failures per account.\n# TYPE sentinel_account_fails gauge\n")
 	for _, a := range accts {
 		a.mu.RLock()
 		id, fails := a.ID, a.Fails
 		a.mu.RUnlock()
-		fmt.Fprintf(&b, "hearth_account_fails{id=%q} %d\n", promLabel(id), fails)
+		fmt.Fprintf(&b, "sentinel_account_fails{id=%q} %d\n", promLabel(id), fails)
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	w.Header().Set("Content-Length", strconv.Itoa(b.Len()))

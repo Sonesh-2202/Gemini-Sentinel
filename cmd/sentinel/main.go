@@ -20,18 +20,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/config"
-	"github.com/soneshsk/hearth/internal/cookies"
-	"github.com/soneshsk/hearth/internal/gemini"
-	"github.com/soneshsk/hearth/internal/server"
-	"github.com/soneshsk/hearth/internal/version"
+	"github.com/sonesh-2202/gemini-sentinel/internal/config"
+	"github.com/sonesh-2202/gemini-sentinel/internal/cookies"
+	"github.com/sonesh-2202/gemini-sentinel/internal/gemini"
+	"github.com/sonesh-2202/gemini-sentinel/internal/server"
+	"github.com/sonesh-2202/gemini-sentinel/internal/version"
 )
 
 var reSafeAccountName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 func main() {
 	var (
-		loginAcct     = flag.String("login", "", "Interactive browser sign-in to capture a fresh session into ~/.hearth/accounts/<name>.json")
+		loginAcct     = flag.String("login", "", "Interactive browser sign-in to capture a fresh session into ~/.gemini-sentinel/accounts/<name>.json")
 		importChrome  = flag.String("import-chrome", "", "Import Google cookies from local Chrome/Brave/Chromium/Edge/Firefox SQLite DB into accounts/<name>.json")
 		cookieDB      = flag.String("cookie-db", "", "Explicit path to browser Cookies SQLite database or profile directory for --import-chrome / --login")
 		chromeProfile = flag.String("chrome-profile", "", "Browser profile name (e.g. \"Profile 4\"), profile directory, or Cookies SQLite path for --import-chrome / --login")
@@ -144,12 +144,12 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("hearth (%s) listening on http://%s", version.String(), addr)
+		log.Printf("sentinel (%s) listening on http://%s", version.String(), addr)
 		log.Printf("  transport: browserless Chrome uTLS + HTTP/2 (%s)", cfg.ImpersonateProfile)
 		log.Printf("  data:      %s (%d account(s) loaded)", cfg.HomeDir, loaded)
 		log.Printf("  models:    http://%s/v1/models", addr)
 		if loaded == 0 {
-			log.Printf("  WARNING:   no credentials found — run `hearth --import-chrome <name>` or place accounts in %s", cfg.AccountsDir)
+			log.Printf("  WARNING:   no credentials found — run `sentinel --import-chrome <name>` or place accounts in %s", cfg.AccountsDir)
 		}
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[fatal] listen %s: %v", addr, err)
@@ -157,7 +157,7 @@ func main() {
 	}()
 
 	<-ctx.Done()
-	log.Printf("[shutdown] stopping hearth...")
+	log.Printf("[shutdown] stopping sentinel...")
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutCancel()
 	_ = httpSrv.Shutdown(shutCtx)
@@ -166,7 +166,7 @@ func main() {
 
 func validateServerBind(cfg config.Config) error {
 	if !config.IsLoopbackHost(cfg.Host) {
-		return fmt.Errorf("refusing non-loopback bind on %q: this daemon serves credentials and currently supports plaintext HTTP only; use HEARTH_HOST=127.0.0.1 (or HOST=) or place a reviewed HTTPS/authentication proxy in front of a separately hardened build", cfg.Host)
+		return fmt.Errorf("refusing non-loopback bind on %q: this daemon serves credentials and currently supports plaintext HTTP only; use SENTINEL_HOST=127.0.0.1 (or HOST=) or place a reviewed HTTPS/authentication proxy in front of a separately hardened build", cfg.Host)
 	}
 	return nil
 }
@@ -176,61 +176,65 @@ func validateServerBind(cfg config.Config) error {
 // key is allowed (admin endpoints stay disabled and return 401/403) because
 // per-account tokens still protect chat completions; operators needing
 // /v1/accounts, /v1/quota, /v1/sessions, /v1/refresh or /metrics must set a
-// strong HEARTH_API_KEY (BRIDGE_API_KEY still accepted) of at least 16 characters.
+// strong SENTINEL_API_KEY (HEARTH_API_KEY/BRIDGE_API_KEY still accepted) of at least 16 characters.
 func validateAuthConfig(cfg config.Config, loadedAccounts int) error {
 	if cfg.APIKey == "public" {
-		return fmt.Errorf("refusing to start with a placeholder admin key: set a strong random HEARTH_API_KEY (>=16 chars) or unset it to disable admin endpoints")
+		return fmt.Errorf("refusing to start with a placeholder admin key: set a strong random SENTINEL_API_KEY (>=16 chars) or unset it to disable admin endpoints")
 	}
 	if cfg.APIKey != "" && !config.AdminKeyValid(cfg.APIKey) {
-		return fmt.Errorf("refusing to start with weak HEARTH_API_KEY (%d chars): use at least 16 random characters", len(cfg.APIKey))
+		return fmt.Errorf("refusing to start with weak SENTINEL_API_KEY (%d chars): use at least 16 random characters", len(cfg.APIKey))
 	}
 	if loadedAccounts > 0 && cfg.APIKey == "" && len(cfg.AccountTokens) == 0 {
-		// Per-account hearth-<id> tokens are auto-registered at load time, so
+		// Per-account sentinel-<id> tokens are auto-registered at load time, so
 		// chat remains authenticated; admin endpoints fail closed.
-		log.Printf("[auth] HEARTH_API_KEY is unset: admin endpoints (/v1/accounts, /v1/quota, /v1/sessions, /v1/refresh, /metrics) will deny all requests until a strong key is configured")
+		log.Printf("[auth] SENTINEL_API_KEY is unset: admin endpoints (/v1/accounts, /v1/quota, /v1/sessions, /v1/refresh, /metrics) will deny all requests until a strong key is configured")
 	}
 	return nil
 }
 
-// migrateLegacyHome copies account files from the previous project's data
-// directory into the new one on first run. It never deletes the source and
+// migrateLegacyHome copies account files from previous projects' data
+// directories into the new one on first run. It never deletes sources and
 // never overwrites files that already exist in the destination.
 func migrateLegacyHome(cfg config.Config) {
-	if cfg.HomeDir == config.LegacyHomeDir() {
-		return
-	}
-	legacyAccts := filepath.Join(config.LegacyHomeDir(), "accounts")
-	entries, err := os.ReadDir(legacyAccts)
-	if err != nil || len(entries) == 0 {
-		return
+	for _, legacy := range config.LegacyHomeDirs() {
+		if cfg.HomeDir == legacy {
+			return
+		}
 	}
 	if fresh, err := os.ReadDir(cfg.AccountsDir); err == nil && len(fresh) > 0 {
 		return
 	}
-	if err := os.MkdirAll(cfg.AccountsDir, 0o700); err != nil {
-		log.Printf("[migrate] cannot create %s: %v", cfg.AccountsDir, err)
-		return
-	}
-	moved := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+	for _, legacy := range config.LegacyHomeDirs() {
+		legacyAccts := filepath.Join(legacy, "accounts")
+		entries, err := os.ReadDir(legacyAccts)
+		if err != nil || len(entries) == 0 {
 			continue
 		}
-		src := filepath.Join(legacyAccts, e.Name())
-		dst := filepath.Join(cfg.AccountsDir, e.Name())
-		if _, err := os.Stat(dst); err == nil {
-			continue
+		if err := os.MkdirAll(cfg.AccountsDir, 0o700); err != nil {
+			log.Printf("[migrate] cannot create %s: %v", cfg.AccountsDir, err)
+			return
 		}
-		raw, err := os.ReadFile(src)
-		if err != nil || len(raw) == 0 {
-			continue
+		moved := 0
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			src := filepath.Join(legacyAccts, e.Name())
+			dst := filepath.Join(cfg.AccountsDir, e.Name())
+			if _, err := os.Stat(dst); err == nil {
+				continue
+			}
+			raw, err := os.ReadFile(src)
+			if err != nil || len(raw) == 0 {
+				continue
+			}
+			if err := os.WriteFile(dst, raw, 0o600); err == nil {
+				moved++
+			}
 		}
-		if err := os.WriteFile(dst, raw, 0o600); err == nil {
-			moved++
+		if moved > 0 {
+			log.Printf("[migrate] copied %d account file(s) from %s to %s (source left untouched)", moved, legacyAccts, cfg.AccountsDir)
 		}
-	}
-	if moved > 0 {
-		log.Printf("[migrate] copied %d account file(s) from %s to %s (source left untouched)", moved, legacyAccts, cfg.AccountsDir)
 	}
 }
 
@@ -238,7 +242,7 @@ func migrateLegacyHome(cfg config.Config) {
 // It never touches the network and never prints secrets.
 func runStatus(cfg config.Config) int {
 	fail := 0
-	fmt.Printf("hearth status (%s)\n", version.String())
+	fmt.Printf("sentinel status (%s)\n", version.String())
 	if err := validateServerBind(cfg); err != nil {
 		fmt.Printf("  bind:     FAIL — %v\n", err)
 		fail = 1
@@ -247,7 +251,7 @@ func runStatus(cfg config.Config) int {
 	}
 	switch {
 	case cfg.APIKey == "public" || (cfg.APIKey != "" && !config.AdminKeyValid(cfg.APIKey)):
-		fmt.Printf("  admin key: FAIL — placeholder or weak; set HEARTH_API_KEY (>=16 chars)\n")
+		fmt.Printf("  admin key: FAIL — placeholder or weak; set SENTINEL_API_KEY (>=16 chars)\n")
 		fail = 1
 	case cfg.APIKey == "":
 		fmt.Printf("  admin key: missing — chat keys work, admin endpoints will deny all\n")
@@ -268,9 +272,9 @@ func runStatus(cfg config.Config) int {
 		fmt.Printf("  accounts:  %d file(s) in %s\n", count, cfg.AccountsDir)
 	}
 	if count == 0 {
-		fmt.Printf("  next:      hearth --import-chrome <name>  (then hearth --probe)\n")
+		fmt.Printf("  next:      sentinel --import-chrome <name>  (then sentinel --probe)\n")
 	} else {
-		fmt.Printf("  next:      hearth --probe  (verify models & quota) then start the server\n")
+		fmt.Printf("  next:      sentinel --probe  (verify models & quota) then start the server\n")
 	}
 	return fail
 }
@@ -482,5 +486,5 @@ func openBrowserURL(url, browser, profileDir string) {
 
 func printStandaloneConnectionInfo(cfg config.Config, acctName string) {
 	fmt.Printf("  base url: http://%s:%d/v1\n", cfg.Host, cfg.Port)
-	fmt.Printf("  api key : hearth-%s (or %s; legacy gsb-%s also accepted)\n", acctName, acctName, acctName)
+	fmt.Printf("  api key : sentinel-%s (or %s; legacy hearth-%s and gsb-%s also accepted)\n", acctName, acctName, acctName, acctName)
 }

@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/gemini"
-	"github.com/soneshsk/hearth/internal/prompt"
-	"github.com/soneshsk/hearth/internal/toolbridge"
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/gemini"
+	"github.com/sonesh-2202/gemini-sentinel/internal/prompt"
+	"github.com/sonesh-2202/gemini-sentinel/internal/toolbridge"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 type sseChatChoice struct {

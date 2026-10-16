@@ -109,6 +109,7 @@ func BuildModelHeader(m ModelInfo, thinkLvl int, fSid string) string {
 
 // knownModelPrefixes lists router/provider prefixes stripped before matching a model name.
 var knownModelPrefixes = []string{
+	"sentinel/",
 	"hearth/",
 	"gsb/",
 	"google/",

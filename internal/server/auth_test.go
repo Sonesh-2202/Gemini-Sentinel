@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/config"
-	"github.com/soneshsk/hearth/internal/gemini"
+	"github.com/sonesh-2202/gemini-sentinel/internal/config"
+	"github.com/sonesh-2202/gemini-sentinel/internal/gemini"
 )
 
 const testAdminKey = "0123456789abcdef0123456789abcdef"
@@ -93,14 +93,14 @@ func TestAuthValidAdminAndAccount(t *testing.T) {
 	if rec := doReq(srv, http.MethodGet, "/v1/accounts", testAdminKey, ""); rec.Code != 200 {
 		t.Errorf("admin /v1/accounts: got %d", rec.Code)
 	}
-	if rec := doReq(srv, http.MethodGet, "/v1/accounts", "hearth-acctA", ""); rec.Code != 403 {
+	if rec := doReq(srv, http.MethodGet, "/v1/accounts", "sentinel-acctA", ""); rec.Code != 403 {
 		t.Errorf("account /v1/accounts: got %d, want 403", rec.Code)
 	}
 	for _, path := range []string{"/v1/quota", "/v1/sessions"} {
 		if rec := doReq(srv, http.MethodGet, path, testAdminKey, ""); rec.Code != 200 {
 			t.Errorf("admin %s: got %d", path, rec.Code)
 		}
-		if rec := doReq(srv, http.MethodGet, path, "hearth-acctA", ""); rec.Code != 403 {
+		if rec := doReq(srv, http.MethodGet, path, "sentinel-acctA", ""); rec.Code != 403 {
 			t.Errorf("account %s: got %d, want 403", path, rec.Code)
 		}
 	}
@@ -124,9 +124,9 @@ func TestAuthAccountIsolation(t *testing.T) {
 	srv := newAuthTestServer(t)
 	// Account A sees only its own model; account B likewise; neither sees the other.
 	for _, tc := range []struct{ token, want string }{
-		{"hearth-acctA", "acctA"},
+		{"sentinel-acctA", "acctA"},
 		{"acctA", "acctA"},
-		{"hearth-acctB", "acctB"},
+		{"sentinel-acctB", "acctB"},
 	} {
 		req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 		req.Header.Set("Authorization", "Bearer "+tc.token)
@@ -138,7 +138,7 @@ func TestAuthAccountIsolation(t *testing.T) {
 	}
 	// Cross-account token must not resolve to another account.
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	req.Header.Set("x-api-key", "hearth-acctA")
+	req.Header.Set("x-api-key", "sentinel-acctA")
 	rec := httptest.NewRecorder()
 	scope := srv.ResolveAuthScope(req)
 	if !scope.OK || scope.AccountID != "acctA" || scope.Admin {
@@ -159,17 +159,17 @@ func TestAuthQueryStringRejected(t *testing.T) {
 
 func TestAuthHeaderVariants(t *testing.T) {
 	srv := newAuthTestServer(t)
-	if rec := doReq(srv, http.MethodGet, "/v1/models", "hearth-acctA", "x-api-key"); rec.Code != 200 {
+	if rec := doReq(srv, http.MethodGet, "/v1/models", "sentinel-acctA", "x-api-key"); rec.Code != 200 {
 		t.Errorf("x-api-key: got %d", rec.Code)
 	}
-	if rec := doReq(srv, http.MethodGet, "/v1/models", "hearth-acctA", "x-goog-api-key"); rec.Code != 200 {
+	if rec := doReq(srv, http.MethodGet, "/v1/models", "sentinel-acctA", "x-goog-api-key"); rec.Code != 200 {
 		t.Errorf("x-goog-api-key: got %d", rec.Code)
 	}
 }
 
 func TestAuthDoesNotLeakExistence(t *testing.T) {
 	srv := newAuthTestServer(t)
-	rec := doReq(srv, http.MethodGet, "/v1/models", "hearth-no-such-account", "")
+	rec := doReq(srv, http.MethodGet, "/v1/models", "sentinel-no-such-account", "")
 	if rec.Code != 401 {
 		t.Fatalf("unknown account: got %d, want 401", rec.Code)
 	}
@@ -180,14 +180,16 @@ func TestAuthDoesNotLeakExistence(t *testing.T) {
 
 func TestAuthLegacyTokensAccepted(t *testing.T) {
 	srv := newAuthTestServer(t)
-	// Tokens issued under the previous brand keep working.
-	if rec := doReq(srv, http.MethodGet, "/v1/models", "gsb-acctA", ""); rec.Code != 200 {
-		t.Errorf("legacy gsb- token: got %d, want 200", rec.Code)
+	// Tokens issued under previous brands keep working.
+	for _, legacy := range []string{"hearth-acctA", "gsb-acctA"} {
+		if rec := doReq(srv, http.MethodGet, "/v1/models", legacy, ""); rec.Code != 200 {
+			t.Errorf("legacy %s token: got %d, want 200", legacy, rec.Code)
+		}
 	}
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	req.Header.Set("Authorization", "Bearer gsb-acctB")
+	req.Header.Set("Authorization", "Bearer hearth-acctB")
 	if scope := srv.ResolveAuthScope(req); !scope.OK || scope.AccountID != "acctB" {
-		t.Fatalf("legacy gsb-acctB scope = %+v, want AccountID=acctB", scope)
+		t.Fatalf("legacy hearth-acctB scope = %+v, want AccountID=acctB", scope)
 	}
 }
 
@@ -196,7 +198,7 @@ func TestMetricsEndpointAdminOnly(t *testing.T) {
 	if rec := doReq(srv, http.MethodGet, "/metrics", "", ""); rec.Code != 401 {
 		t.Errorf("unauthenticated /metrics: got %d, want 401", rec.Code)
 	}
-	if rec := doReq(srv, http.MethodGet, "/metrics", "hearth-acctA", ""); rec.Code != 403 {
+	if rec := doReq(srv, http.MethodGet, "/metrics", "sentinel-acctA", ""); rec.Code != 403 {
 		t.Errorf("account /metrics: got %d, want 403", rec.Code)
 	}
 	// Generate traffic, then verify exposition.
@@ -207,11 +209,11 @@ func TestMetricsEndpointAdminOnly(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"hearth_http_requests_total",
+		"sentinel_http_requests_total",
 		`path="/v1/models"`,
-		"hearth_accounts 2",
-		"hearth_models",
-		`hearth_account_fails{id="acctA"}`,
+		"sentinel_accounts 2",
+		"sentinel_models",
+		`sentinel_account_fails{id="acctA"}`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("metrics output missing %q:\n%s", want, body)
@@ -237,7 +239,7 @@ func TestCountTokensEndpoint(t *testing.T) {
 	if rec := post("", `{"text":"hello"}`); rec.Code != 401 {
 		t.Errorf("unauthenticated count-tokens: got %d, want 401", rec.Code)
 	}
-	rec := post("hearth-acctA", `{"text":"hello world, this is a test"}`)
+	rec := post("sentinel-acctA", `{"text":"hello world, this is a test"}`)
 	if rec.Code != 200 {
 		t.Fatalf("count-tokens text: got %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -248,10 +250,10 @@ func TestCountTokensEndpoint(t *testing.T) {
 	if recMsgs.Code != 200 {
 		t.Fatalf("count-tokens messages: got %d (%s)", recMsgs.Code, recMsgs.Body.String())
 	}
-	if rec := post("hearth-acctA", `{}`); rec.Code != 400 {
+	if rec := post("sentinel-acctA", `{}`); rec.Code != 400 {
 		t.Errorf("empty count-tokens body: got %d, want 400", rec.Code)
 	}
-	if rec := post("hearth-acctA", `{"messages":[]}`); rec.Code != 400 {
+	if rec := post("sentinel-acctA", `{"messages":[]}`); rec.Code != 400 {
 		t.Errorf("empty messages: got %d, want 400", rec.Code)
 	}
 }

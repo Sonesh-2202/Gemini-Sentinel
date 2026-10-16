@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/soneshsk/hearth/internal/config"
+	"github.com/sonesh-2202/gemini-sentinel/internal/config"
 )
 
 func TestValidateServerBind(t *testing.T) {

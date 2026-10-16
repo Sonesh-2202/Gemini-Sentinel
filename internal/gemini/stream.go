@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/soneshsk/hearth/internal/transport"
+	"github.com/sonesh-2202/gemini-sentinel/internal/transport"
 )
 
 // UploadedFile represents the [[uploadPath], safeName] tuple expected in inner[0][3].

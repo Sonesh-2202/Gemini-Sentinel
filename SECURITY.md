@@ -32,8 +32,8 @@ Include: version (`gsb --version`), OS, Go version, redacted configuration
 1. In Google account settings, revoke third-party sessions / sign out all
    sessions for the affected account.
 2. Delete stored credentials: remove
-   `~/.hearth/accounts/<name>.json` and
-   `~/.hearth/session-cache.json`.
-3. Rotate `HEARTH_API_KEY` to a fresh random value (>= 32 chars).
+   `~/.gemini-sentinel/accounts/<name>.json` and
+   `~/.gemini-sentinel/session-cache.json`.
+3. Rotate `SENTINEL_API_KEY` to a fresh random value (>= 32 chars).
 4. Re-import cookies from a clean browser profile (`gsb --import-chrome`).
 5. Check Google account activity for unfamiliar sessions.
