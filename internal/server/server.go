@@ -388,7 +388,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		models := len(s.allModels())
 		respond(200, map[string]any{
 			"status":    "ok",
-			"service":   "gemini-stealth-bridge",
+			"service":   "hearth",
 			"transport": "stealth-utls-h2",
 			"profile":   s.Cfg.ImpersonateProfile,
 			"accounts":  len(accts),

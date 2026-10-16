@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/soneshsk/hearth/internal/config"
 	"github.com/soneshsk/hearth/internal/cookies"
 	"github.com/soneshsk/hearth/internal/gemini"
 	"github.com/soneshsk/hearth/internal/prompt"

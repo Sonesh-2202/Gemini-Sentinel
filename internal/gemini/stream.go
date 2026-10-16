@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/soneshsk/hearth/internal/transport"
 	"github.com/google/uuid"
+	"github.com/soneshsk/hearth/internal/transport"
 )
 
 // UploadedFile represents the [[uploadPath], safeName] tuple expected in inner[0][3].

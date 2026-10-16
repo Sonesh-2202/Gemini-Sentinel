@@ -410,7 +410,7 @@ func TestHTTPHandlerEndpoints(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"gemini-stealth-bridge"`) {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"hearth"`) {
 		t.Fatalf("unexpected /health response: %d %s", rec.Code, rec.Body.String())
 	}
 
@@ -423,10 +423,10 @@ func TestHTTPHandlerEndpoints(t *testing.T) {
 	}
 }
 
-func TestGsbAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
+func TestHearthAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 	cfg := config.Load()
 	cfg.HomeDir = t.TempDir()
-	cfg.AccountTokens = nil // test automatic gsb-<id> and raw <id> registration
+	cfg.AccountTokens = nil // test automatic hearth-<id> and raw <id> registration
 	srv := New(cfg)
 
 	var capturedLevel int
@@ -452,9 +452,9 @@ func TestGsbAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 	}
 	srv.SetAccounts([]*AccountState{acct})
 
-	// 1. Auth via gsb-<id>, raw <id>, x-api-key, and model prefix gsb/ + @think=high
-	for _, token := range []string{"gsb-acc1", "acc1"} {
-		reqBody := `{"model":"gsb/gemini-pro@think=high","messages":[{"role":"user","content":"ping"}]}`
+	// 1. Auth via hearth-<id>, legacy gsb-<id>, raw <id>, x-api-key, and model prefix hearth/ + @think=high
+	for _, token := range []string{"hearth-acc1", "gsb-acc1", "acc1"} {
+		reqBody := `{"model":"hearth/gemini-pro@think=high","messages":[{"role":"user","content":"ping"}]}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBody))
 		req.Header.Set("x-api-key", token)
 		rec := httptest.NewRecorder()
@@ -467,10 +467,20 @@ func TestGsbAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 		}
 	}
 
+	// 1b. Legacy gsb/ model prefix still resolves.
+	reqLegacy := `{"model":"gsb/gemini-pro","messages":[{"role":"user","content":"ping"}]}`
+	reqL := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqLegacy))
+	reqL.Header.Set("Authorization", "Bearer hearth-acc1")
+	recL := httptest.NewRecorder()
+	srv.ServeHTTP(recL, reqL)
+	if recL.Code != 200 {
+		t.Fatalf("legacy gsb/ model prefix failed with %d: %s", recL.Code, recL.Body.String())
+	}
+
 	// 2. Thinking budget_tokens -> medium (4)
-	reqBudget := `{"model":"gsb/gemini-pro","thinking":{"type":"enabled","budget_tokens":10000},"messages":[{"role":"user","content":"ping"}]}`
+	reqBudget := `{"model":"hearth/gemini-pro","thinking":{"type":"enabled","budget_tokens":10000},"messages":[{"role":"user","content":"ping"}]}`
 	reqB := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBudget))
-	reqB.Header.Set("Authorization", "Bearer gsb-acc1")
+	reqB.Header.Set("Authorization", "Bearer hearth-acc1")
 	recB := httptest.NewRecorder()
 	srv.ServeHTTP(recB, reqB)
 	if recB.Code != 200 || capturedLevel != 4 {

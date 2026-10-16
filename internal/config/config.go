@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Config holds all runtime settings for the gemini-stealth-bridge daemon.
+// Config holds all runtime settings for the hearth daemon.
 // Environment variables are 100% compatible with gemini-app-bridge.
 type Config struct {
 	Host               string

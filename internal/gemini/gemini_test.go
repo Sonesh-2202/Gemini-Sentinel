@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	fhttp "github.com/bogdanfinn/fhttp"
 	"github.com/soneshsk/hearth/internal/cookies"
 	"github.com/soneshsk/hearth/internal/transport"
-	fhttp "github.com/bogdanfinn/fhttp"
 )
 
 func TestParseFrameLineSkipsNullKeepaliveAndExtractsMetadata(t *testing.T) {

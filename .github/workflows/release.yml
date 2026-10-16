@@ -1,0 +1,68 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            ext: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: test
+        run: go test -count=1 ./...
+      - name: build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: >-
+          go build -trimpath
+          -ldflags "-X github.com/soneshsk/hearth/internal/version.Version=${{ github.ref_name }} -X github.com/soneshsk/hearth/internal/version.Commit=${{ github.sha }} -X github.com/soneshsk/hearth/internal/version.Date=$(date -u +%FT%TZ)"
+          -o hearth-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./cmd/hearth
+      - name: sbom
+        run: go list -m -json all > sbom-modules-${{ matrix.goos }}-${{ matrix.goarch }}.json
+      - name: checksum
+        shell: bash
+        run: sha256sum hearth-* sbom-*.json > SHA256SUMS-${{ matrix.goos }}-${{ matrix.goarch }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            hearth-*
+            sbom-*.json
+            SHA256SUMS-*.txt
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
