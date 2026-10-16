@@ -1,0 +1,11 @@
+# Compiled binaries & test artifacts
+/gsb
+*.test
+*.prof
+*.out
+*.log
+.DS_Store
+.fuse_hidden*
+cookies.json
+web-credentials.json
+session-cache.json
