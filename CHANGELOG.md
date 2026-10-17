@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Hearth are recorded here. Format follows
+All notable changes to Gemini-Sentinel are recorded here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
@@ -39,24 +39,21 @@ All notable changes to Hearth are recorded here. Format follows
   `messages` payloads using the same estimator as usage reporting.
 - GitHub Actions CI (`vet`, `gofmt`, `test`, `race`, `govulncheck`) and
   tagged-release builds (Windows/Linux/macOS + SHA-256 + module SBOM).
-- `SENTINEL_*` environment names; `HEARTH_*`/`BRIDGE_*`/`HOST`/`PORT`
-  remain accepted.
-- Automatic first-run migration of `~/.hearth/accounts` and
-  `~/.gemini-stealth-bridge/accounts` into `~/.gemini-sentinel/accounts`
-  (sources untouched, no overwrites).
+- `SENTINEL_*` environment names (plus generic `HOST`/`PORT`).
 
 ### Changed
 
-- **Rebrand**: Hearth → **Gemini-Sentinel** by Sonesh SK
-  (module `github.com/sonesh-2202/gemini-sentinel`, binary `sentinel`,
-  data dir `~/.gemini-sentinel`). Earlier brands (`hearth-`, `gsb-`
-  tokens; `hearth/`, `gsb/` model prefixes) keep working. Fork origin
-  and original MIT notice retained in `LICENSE`.
+- **Branding**: the placeholder project name is fully retired; the binary,
+  module, data dir (`~/.gemini-sentinel`), and all user-facing strings now
+  say **Gemini-Sentinel** only. Attribution and MIT notice retained in
+  `LICENSE`.
 - Per-account API keys are now `sentinel-<name>` (and bare `<name>`).
 - Request logs and `/metrics` never carry secrets; startup errors no
   longer echo key material.
 
 ### Removed
 
-- Nothing. All previous endpoints, limits, and security restrictions
-  are preserved.
+- Legacy placeholder-name compatibility: `HEARTH_*`/`BRIDGE_*`
+  environment variables, `hearth-`/`gsb-` token prefixes, `hearth/`/`gsb/`
+  model prefixes, and old data-directory migration. All previous
+  endpoints, limits, and security restrictions are preserved.

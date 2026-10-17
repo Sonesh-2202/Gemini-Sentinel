@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// SessionStatus describes the live state of a per-account stealth transport session.
+// SessionStatus describes the live state of a per-account transport session.
 type SessionStatus struct {
 	Key     string `json:"key"`
 	Ready   bool   `json:"ready"`
@@ -19,11 +19,11 @@ type SessionStatus struct {
 	IdleSec int64  `json:"idleSec"`
 }
 
-// Session owns an isolated per-account StealthClient and serializes generations
+// Session owns an isolated per-account SentinelClient and serializes generations
 // on that account with a bounded wait queue, mirroring BrowserSession without Chrome.
 type Session struct {
 	Name          string
-	Client        *StealthClient
+	Client        *SentinelClient
 	Generation    uint64
 	MaxQueueDepth int
 	WaitTimeout   time.Duration
@@ -38,7 +38,7 @@ type Session struct {
 }
 
 // NewSession constructs a new isolated account session.
-func NewSession(name string, client *StealthClient, gen uint64, cookieHeader string, maxQueue int, waitTimeout ...time.Duration) *Session {
+func NewSession(name string, client *SentinelClient, gen uint64, cookieHeader string, maxQueue int, waitTimeout ...time.Duration) *Session {
 	if maxQueue <= 0 {
 		maxQueue = 4
 	}
@@ -249,7 +249,7 @@ func (s *Session) Close() {
 	}
 }
 
-// Pool manages isolated per-account stealth transport sessions with bounded capacity,
+// Pool manages isolated per-account transport sessions with bounded capacity,
 // reservation grace windows, and idle reaping.
 type Pool struct {
 	mu          sync.Mutex
@@ -271,7 +271,7 @@ type PoolOptions struct {
 	ReserveFor   time.Duration
 }
 
-// NewPool creates a new per-account stealth transport pool.
+// NewPool creates a new per-account transport pool.
 func NewPool(opts PoolOptions) *Pool {
 	if opts.MaxSessions <= 0 {
 		opts.MaxSessions = 16
@@ -339,7 +339,7 @@ func (p *Pool) Acquire(ctx context.Context, key, cookieHeader string) (*Session,
 		}
 
 		if len(p.sessions) < p.maxSessions || p.evictLRUIdleLocked() {
-			sc, err := NewStealthClient(p.clientCfg)
+			sc, err := NewSentinelClient(p.clientCfg)
 			if err != nil {
 				p.mu.Unlock()
 				return nil, err

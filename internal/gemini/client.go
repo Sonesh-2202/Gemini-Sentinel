@@ -266,7 +266,7 @@ func (ac *AccountClient) acquireSession(ctx context.Context) (*transport.Session
 	return ac.Pool.Acquire(ctx, ac.sessionKey(), ac.CookieHeader())
 }
 
-// Bootstrap loads https://gemini.google.com/app over the account's stealth session
+// Bootstrap loads https://gemini.google.com/app over the account's transport session
 // and extracts SNlM0e (at), cfb2h (bl), FdrFJe (f.sid), pushId, pctx, and email.
 func (ac *AccountClient) Bootstrap(ctx context.Context) error {
 	sess, err := ac.acquireSession(ctx)
@@ -278,7 +278,7 @@ func (ac *AccountClient) Bootstrap(ctx context.Context) error {
 	return ac.bootstrapOnClient(ctx, sess.Client)
 }
 
-func (ac *AccountClient) bootstrapOnClient(ctx context.Context, sc *transport.StealthClient) error {
+func (ac *AccountClient) bootstrapOnClient(ctx context.Context, sc *transport.SentinelClient) error {
 	doFetchApp := func() (*transport.Response, error) {
 		res, err := sc.Do(ctx, transport.RequestOptions{
 			Method:  "GET",
@@ -376,7 +376,7 @@ func (ac *AccountClient) bootstrapOnClient(ctx context.Context, sc *transport.St
 	return nil
 }
 
-func (ac *AccountClient) ensureBootstrapped(ctx context.Context, sc *transport.StealthClient) error {
+func (ac *AccountClient) ensureBootstrapped(ctx context.Context, sc *transport.SentinelClient) error {
 	ac.mu.RLock()
 	at := ac.at
 	age := time.Since(ac.bootstrappedAt)
@@ -406,7 +406,7 @@ func (ac *AccountClient) RotateCookies(ctx context.Context) (*cookies.RotateResu
 	return ac.rotateOnClient(ctx, sess.Client)
 }
 
-func (ac *AccountClient) rotateOnClient(ctx context.Context, sc *transport.StealthClient) (*cookies.RotateResult, error) {
+func (ac *AccountClient) rotateOnClient(ctx context.Context, sc *transport.SentinelClient) (*cookies.RotateResult, error) {
 	if ac.Rotator == nil {
 		ac.Rotator = cookies.NewRotator()
 	}
@@ -444,7 +444,7 @@ func (ac *AccountClient) BatchExec(ctx context.Context, rpcID, payloadJSON strin
 	return res, ParseBatch(res.Body), nil
 }
 
-func (ac *AccountClient) doBatchExec(ctx context.Context, sc *transport.StealthClient, rpcID, payloadJSON string) (*transport.Response, error) {
+func (ac *AccountClient) doBatchExec(ctx context.Context, sc *transport.SentinelClient, rpcID, payloadJSON string) (*transport.Response, error) {
 	ac.mu.RLock()
 	at := ac.at
 	bl := ac.bl

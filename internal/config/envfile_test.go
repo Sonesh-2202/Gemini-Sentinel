@@ -115,14 +115,13 @@ func TestApplyDotEnvUsesCustomFilePath(t *testing.T) {
 
 func TestResolveHomeDirUsesSentinelHome(t *testing.T) {
 	t.Setenv("SENTINEL_HOME", filepath.Join(envFileTestDir(t), "homedir"))
-	t.Setenv("HEARTH_HOME", filepath.Join(envFileTestDir(t), "legacy"))
 	if got := resolveHomeDir(); !strings.HasSuffix(got, "homedir") {
 		t.Fatalf("expected SENTINEL_HOME to win, got %q", got)
 	}
 	os.Unsetenv("SENTINEL_HOME")
 	t.Cleanup(func() { os.Unsetenv("SENTINEL_HOME") })
-	if got := resolveHomeDir(); !strings.HasSuffix(got, "legacy") {
-		t.Fatalf("expected HEARTH_HOME fallback, got %q", got)
+	if !strings.HasSuffix(resolveHomeDir(), filepath.Join(".gemini-sentinel")) {
+		t.Fatalf("expected default ~/.gemini-sentinel data home, got %q", resolveHomeDir())
 	}
 }
 

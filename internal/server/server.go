@@ -81,7 +81,7 @@ type serverMetrics struct {
 	requests map[string]int64
 }
 
-// Server is the browserless Hearth HTTP daemon.
+// Server is the browserless sentinel HTTP daemon.
 type Server struct {
 	Cfg     config.Config
 	Pool    *transport.Pool
@@ -166,15 +166,6 @@ func tokenEquals(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-func hasLegacyTokenPrefix(token string) bool {
-	for _, prefix := range config.LegacyTokenPrefixes {
-		if strings.HasPrefix(token, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 // ResolveAuthScope resolves the caller's API key into an AuthScope using
 // constant-time comparisons. Empty, "public", and unknown tokens fail closed.
 func (s *Server) ResolveAuthScope(r *http.Request) AuthScope {
@@ -202,7 +193,7 @@ func (s *Server) ResolveAuthScope(r *http.Request) AuthScope {
 
 	// Hot-load newly added account files on the fly when not locked by explicit SENTINEL_ACCOUNT_TOKENS,
 	// rate-limited to avoid disk/SQLite scans on repeated invalid tokens.
-	if !explicitTokens && (strings.HasPrefix(token, config.TokenPrefix) || hasLegacyTokenPrefix(token) || reSafeID.MatchString(token)) {
+	if !explicitTokens && (strings.HasPrefix(token, config.TokenPrefix) || reSafeID.MatchString(token)) {
 		s.mu.RLock()
 		canReload := time.Since(s.lastHotLoadAt) >= 2*time.Second
 		s.mu.RUnlock()
@@ -368,7 +359,7 @@ func newRequestID() string {
 	return "req-" + hex.EncodeToString(b[:])
 }
 
-// ServeHTTP implements http.Handler for all bridge endpoints.
+// ServeHTTP implements http.Handler for all server endpoints.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	ctx := r.Context()
@@ -397,8 +388,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		models := len(s.allModels())
 		respond(200, map[string]any{
 			"status":    "ok",
-			"service":   "hearth",
-			"transport": "stealth-utls-h2",
+			"service":   "sentinel",
+			"transport": "chrome-utls-h2",
 			"profile":   s.Cfg.ImpersonateProfile,
 			"accounts":  len(accts),
 			"models":    models,
@@ -413,7 +404,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		status = 200
 		sendJSON(w, 200, map[string]any{
-			"transport": "stealth-utls-h2",
+			"transport": "chrome-utls-h2",
 			"profile":   s.Cfg.ImpersonateProfile,
 			"sessions":  s.Pool.Status(),
 		}, nil)

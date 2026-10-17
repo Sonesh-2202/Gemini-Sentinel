@@ -110,15 +110,13 @@ func BuildModelHeader(m ModelInfo, thinkLvl int, fSid string) string {
 // knownModelPrefixes lists router/provider prefixes stripped before matching a model name.
 var knownModelPrefixes = []string{
 	"sentinel/",
-	"hearth/",
-	"gsb/",
 	"google/",
 	"models/",
 	"vx/",
 	"vertex/",
 }
 
-// ParseModelRequest splits an incoming model identifier (e.g. "gsb/gemini-4-argon@think=high")
+// ParseModelRequest splits an incoming model identifier (e.g. "sentinel/gemini-4-argon@think=high")
 // into its normalized model name ("gemini-4-argon") and optional inline thinking override ("high").
 func ParseModelRequest(raw string) (cleanModel string, inlineThink string) {
 	s := strings.TrimSpace(raw)

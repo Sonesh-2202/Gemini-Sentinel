@@ -25,11 +25,7 @@
 > - **Cookies are Passwords:** Anyone holding your browser cookies or account `.json` files can impersonate your Google session. For remote access, keep `sentinel` on loopback behind a separately hardened HTTPS reverse proxy. See [`SECURITY.md`](./SECURITY.md) for full details.
 
 > [!TIP]
-> **Upgrading from Hearth or `gemini-stealth-bridge` (`gsb`)?**
-> Gemini-Sentinel continues the Hearth and `gemini-stealth-bridge` line (MIT, © 2026 azrinaldi). Just build and run `sentinel`:
-> - Accounts automatically migrate from `~/.hearth` or `~/.gemini-stealth-bridge` to `~/.gemini-sentinel` on first start (originals are left untouched).
-> - Legacy `HEARTH_*` and `BRIDGE_*` environment variables, `hearth-<name>` / `gsb-<name>` API keys, and `hearth/` / `gsb/` model prefixes remain 100% backward-compatible.
-> - **What's New:** `sentinel --status` preflight checks, `GET /metrics` (Prometheus), `POST /v1/count-tokens`, `SENTINEL_*` settings, and automated CI/tagged releases. See [`CHANGELOG.md`](./CHANGELOG.md).
+> **What's New:** `sentinel --setup` one-command onboarding, `sentinel --status` preflight checks, `GET /metrics` (Prometheus), `POST /v1/count-tokens`, and automated CI/tagged releases. See [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
@@ -99,7 +95,7 @@ Each imported account receives **two dedicated API keys**: `sentinel-<name>` and
 
 ## 2. Requirements
 
-- **Go 1.26 or newer** (check with `go version`; defined in [`go.mod`](./go.mod)).
+- **Go 1.27.2 or newer** (check with `go version`; pinned in [`go.mod`](./go.mod)).
 - **OS:** Windows (PowerShell), macOS, or Linux, plus `curl` for testing.
 - **Browser:** Chrome, Brave, Chromium, Edge, or Firefox with an active logged-in session at `gemini.google.com/app`.
 - **Environment:** A local machine you control (do not run as Administrator/root, and do not deploy on shared hosts without reviewing [`SECURITY.md`](./SECURITY.md)).
@@ -400,7 +396,7 @@ Use any exact model slug from `--probe` or `/v1/models` (`gemini-flash`, `gemini
 
 | Feature | Example | Behavior |
 | :--- | :--- | :--- |
-| **Router Prefix** | `"model": "sentinel/gemini-pro"` | Prefix is stripped automatically (`hearth/` and `gsb/` also supported) |
+| **Router Prefix** | `"model": "sentinel/gemini-pro"` | Prefix is stripped automatically |
 | **Inline Thinking Override** | `"model": "gemini-pro@think=high"` | Overrides thinking effort for that call if unset in the JSON body |
 | **Default Model Fallback** | `"model": ""` | Selects the first available model on that account |
 
@@ -579,17 +575,17 @@ curl -s -X POST [http://127.0.0.1:20133/v1/refresh](http://127.0.0.1:20133/v1/re
 
 ## 14. Configuration Reference
 
-`SENTINEL_*` takes precedence; legacy `HEARTH_*` and `BRIDGE_*` (plus `HOST`/`PORT`) remain supported. See [`config.example.env`](./config.example.env).
+`SENTINEL_*` is the only supported prefix (plus `HOST`/`PORT`). See [`config.example.env`](./config.example.env).
 
 **Settings file:** a local `.env` inside the data home (`~/.gemini-sentinel/.env` by default; [`--setup`](#3-quick-start-build--configure) writes it there) is loaded on every run and only fills variables absent from the process environment — explicit environment always wins. `SENTINEL_ENV_FILE` points to an alternative file; `SENTINEL_ENV_FILE=off` disables the loader.
 
-| Variable (Fallbacks) | Default | Description |
+| Variable | Default | Description |
 | :--- | :--- | :--- |
 | `SENTINEL_AUTO_ADMIN_KEY` | `true` | When starting the server with① a loaded account and no admin key (unset env, no .env value), generate a strong key once and persist it to the data-home `.env`. Set `false` to restore old behavior (admin endpoints stay disabled). |
-| `SENTINEL_HOST` (`HEARTH_HOST`, `BRIDGE_HOST`, `HOST`) | `127.0.0.1` | Bind address. Non-loopback values refuse startup. |
-| `SENTINEL_PORT` (`HEARTH_PORT`, `BRIDGE_PORT`, `PORT`) | `20133` | Local HTTP listen port. |
-| `SENTINEL_HOME` (`HEARTH_HOME`, `BRIDGE_HOME`) | `~/.gemini-sentinel` | Data directory for `accounts/*.json` & `session-cache.json`. |
-| `SENTINEL_API_KEY` (`HEARTH_API_KEY`, `BRIDGE_API_KEY`) | *(empty)* | Admin key (≥ 16 chars). Weak keys fail startup; empty denies admin routes. |
+| `SENTINEL_HOST` (or `HOST`) | `127.0.0.1` | Bind address. Non-loopback values refuse startup. |
+| `SENTINEL_PORT` (or `PORT`) | `20133` | Local HTTP listen port. |
+| `SENTINEL_HOME` | `~/.gemini-sentinel` | Data directory for `accounts/*.json`, `.env` & `session-cache.json`. |
+| `SENTINEL_API_KEY` | *(empty)* | Admin key (≥ 16 chars). Weak keys fail startup; empty denies admin routes. |
 | `SENTINEL_ACCOUNT_TOKENS` | *Auto-derived* | Explicit `token:account` pairs to lock the token set. |
 | `SENTINEL_LOG_LEVEL` | `info` | `info` logs `method path status duration_ms`; `error` / `silent` suppresses. |
 | `SENTINEL_IMPERSONATE` | `chrome_150_psk` | uTLS fingerprint (`chrome_150_psk`, `chrome_146`, `chrome_133`, `firefox_135`, `safari_18_0`). |
@@ -681,7 +677,7 @@ CI enforces `gofmt`, `go vet`, `-race` tests, and `govulncheck` on every push.
 | Package / Path | Responsibility |
 | :--- | :--- |
 | [`cmd/sentinel/main.go`](./cmd/sentinel/main.go) | CLI flags (`--probe`, `--rotate`, `--status`, `--login`, `--import-*`, `--version`), directory migration, startup security gates, graceful shutdown |
-| [`internal/config`](./internal/config) | `SENTINEL_*` / `HEARTH_*` / `BRIDGE_*` env resolution, loopback validation, OS-matched browser headers |
+| [`internal/config`](./internal/config) | `SENTINEL_*` env resolution, loopback validation, OS-matched browser headers |
 | [`internal/cookies`](./internal/cookies) | Cookie canonicalization, `SAPISIDHASH`, atomic `0600` persistence, dual-path rotation (`__Secure-1PSIDTS`, `SIDCC`), SQLite/AES browser decryption |
 | [`internal/transport`](./internal/transport) | `Chrome_150_PSK` uTLS + HTTP/2 client, header ordering, per-account session pools, bounded queues |
 | [`internal/gemini`](./internal/gemini) | Auth bootstrap, `batchexecute` (`otAQ7b` models, `qpEbW` quota), `StreamGenerate`, `wrb.fr` parser, model-identity verification |
@@ -710,4 +706,4 @@ Contributions that improve security, correctness, documentation, testing, or mai
 ### License
 Released under the [MIT License](./LICENSE).
 - © 2026 **Sonesh SK** (`Gemini-Sentinel`)
-- © 2026 **azrinaldi** (original Hearth / `gemini-stealth-bridge`)
+- © 2026 **azrinaldi** (original `gemini-stealth-bridge`)

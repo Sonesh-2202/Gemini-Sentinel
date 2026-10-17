@@ -34,7 +34,7 @@ func (d *stubDoer) CloseIdleConnections() {
 	d.mu.Unlock()
 }
 
-func TestStealthClientOrderedHeaders(t *testing.T) {
+func TestSentinelClientOrderedHeaders(t *testing.T) {
 	var captured *fhttp.Request
 	doer := &stubDoer{
 		fn: func(req *fhttp.Request) (*fhttp.Response, error) {
@@ -50,12 +50,12 @@ func TestStealthClientOrderedHeaders(t *testing.T) {
 		},
 	}
 
-	sc, err := NewStealthClient(ClientConfig{
+	sc, err := NewSentinelClient(ClientConfig{
 		ProfileName: "chrome_150_psk",
 		CustomDoer:  doer,
 	})
 	if err != nil {
-		t.Fatalf("NewStealthClient: %v", err)
+		t.Fatalf("NewSentinelClient: %v", err)
 	}
 
 	res, err := sc.Do(context.Background(), RequestOptions{
@@ -88,7 +88,7 @@ func TestStealthClientOrderedHeaders(t *testing.T) {
 }
 
 func TestSessionLeaseQueueAndDeferredCookie(t *testing.T) {
-	sc, _ := NewStealthClient(ClientConfig{
+	sc, _ := NewSentinelClient(ClientConfig{
 		CustomDoer: &stubDoer{
 			fn: func(req *fhttp.Request) (*fhttp.Response, error) {
 				return &fhttp.Response{
@@ -272,9 +272,9 @@ func TestNavigateVsCORSHeaderOrdering(t *testing.T) {
 			}, nil
 		},
 	}
-	sc, err := NewStealthClient(ClientConfig{CustomDoer: doer})
+	sc, err := NewSentinelClient(ClientConfig{CustomDoer: doer})
 	if err != nil {
-		t.Fatalf("NewStealthClient: %v", err)
+		t.Fatalf("NewSentinelClient: %v", err)
 	}
 	_, _ = sc.Do(context.Background(), RequestOptions{
 		Method:  "GET",

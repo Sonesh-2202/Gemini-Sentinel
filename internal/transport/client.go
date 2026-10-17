@@ -32,7 +32,7 @@ const (
 // the upstream response body immediately once the logical stream is complete.
 var ErrStopStreaming = errors.New("stop streaming")
 
-// UpstreamError is a typed error carrying HTTP status, OpenAI/bridge error code,
+// UpstreamError is a typed error carrying HTTP status, OpenAI-compatible error code,
 // and retry-related upstream response headers.
 type UpstreamError struct {
 	Message    string
@@ -114,7 +114,7 @@ type Doer interface {
 	CloseIdleConnections()
 }
 
-// ClientConfig configures a per-account StealthClient.
+// ClientConfig configures a per-account SentinelClient.
 type ClientConfig struct {
 	ProfileName      string
 	ProxyURL         string
@@ -127,16 +127,16 @@ type ClientConfig struct {
 	CustomDoer       Doer
 }
 
-// StealthClient is an isolated, per-account HTTP/2 + uTLS client that reproduces
+// SentinelClient is an isolated, per-account HTTP/2 + uTLS client that reproduces
 // a single Chrome BrowserContext's network stack without launching a browser.
-type StealthClient struct {
+type SentinelClient struct {
 	mu     sync.Mutex
 	cfg    ClientConfig
 	client Doer
 }
 
-// NewStealthClient creates an isolated StealthClient for one Google account.
-func NewStealthClient(cfg ClientConfig) (*StealthClient, error) {
+// NewSentinelClient creates an isolated SentinelClient for one Google account.
+func NewSentinelClient(cfg ClientConfig) (*SentinelClient, error) {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 10 * time.Minute
 	}
@@ -146,7 +146,7 @@ func NewStealthClient(cfg ClientConfig) (*StealthClient, error) {
 	if cfg.StallTimeout <= 0 {
 		cfg.StallTimeout = 90 * time.Second
 	}
-	sc := &StealthClient{cfg: cfg}
+	sc := &SentinelClient{cfg: cfg}
 	if cfg.CustomDoer != nil {
 		sc.client = cfg.CustomDoer
 		return sc, nil
@@ -174,7 +174,7 @@ func buildTLSClient(cfg ClientConfig) (tls_client.HttpClient, error) {
 		tls_client.WithRandomTLSExtensionOrder(),
 		tls_client.WithNotFollowRedirects(),
 	}
-	if os.Getenv("BRIDGE_DISABLE_IPV6") != "0" {
+	if os.Getenv("SENTINEL_DISABLE_IPV6") != "0" {
 		opts = append(opts, tls_client.WithDisableIPV6())
 	}
 	if cfg.ProxyURL != "" {
@@ -185,7 +185,7 @@ func buildTLSClient(cfg ClientConfig) (tls_client.HttpClient, error) {
 
 // ResetConnections closes idle HTTP/2 connections and rebuilds the uTLS client
 // when a fresh socket is needed after a stall or timeout.
-func (sc *StealthClient) ResetConnections() {
+func (sc *SentinelClient) ResetConnections() {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	if sc.client != nil {
@@ -198,7 +198,7 @@ func (sc *StealthClient) ResetConnections() {
 	}
 }
 
-func (sc *StealthClient) getDoer() Doer {
+func (sc *SentinelClient) getDoer() Doer {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	return sc.client
@@ -229,7 +229,7 @@ type Response struct {
 
 // Do executes a request with Chrome uTLS/H2 fingerprinting, ordered headers,
 // first-byte timeout, and stall detection.
-func (sc *StealthClient) Do(ctx context.Context, opts RequestOptions) (*Response, error) {
+func (sc *SentinelClient) Do(ctx context.Context, opts RequestOptions) (*Response, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -425,7 +425,7 @@ func (sc *StealthClient) Do(ctx context.Context, opts RequestOptions) (*Response
 	}, nil
 }
 
-func (sc *StealthClient) classifyErr(
+func (sc *SentinelClient) classifyErr(
 	err error,
 	callerCtx, reqCtx context.Context,
 	timedOutFirstByte, stalled *atomic.Bool,
@@ -508,7 +508,7 @@ func extractHeaders(h fhttp.Header) map[string]string {
 	return out
 }
 
-func (sc *StealthClient) applyOrderedChromeHeaders(req *fhttp.Request, kind RequestKind, extra map[string]string) {
+func (sc *SentinelClient) applyOrderedChromeHeaders(req *fhttp.Request, kind RequestKind, extra map[string]string) {
 	ua := sc.cfg.UserAgent
 	if ua == "" {
 		ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"

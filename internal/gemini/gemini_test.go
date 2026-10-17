@@ -127,7 +127,7 @@ func (d *stubGeminiDoer) Do(req *fhttp.Request) (*fhttp.Response, error) {
 func (d *stubGeminiDoer) CloseIdleConnections() {}
 
 func TestParseModelRequestAndStrictThreeThinkingLevels(t *testing.T) {
-	clean, think := ParseModelRequest("gsb/gemini-4-argon@think=high")
+	clean, think := ParseModelRequest("sentinel/gemini-4-argon@think=high")
 	if clean != "gemini-4-argon" || think != "high" {
 		t.Fatalf("unexpected ParseModelRequest result: clean=%q think=%q", clean, think)
 	}
@@ -137,7 +137,7 @@ func TestParseModelRequestAndStrictThreeThinkingLevels(t *testing.T) {
 		DisplayName: "4 Argon",
 		Aliases:     []string{"gemini-4-argon"},
 	}
-	for _, wanted := range []string{"gemini-argon", "gemini-4-argon", "gsb/gemini-argon", "gsb/gemini-4-argon@think=medium"} {
+	for _, wanted := range []string{"gemini-argon", "gemini-4-argon", "sentinel/gemini-argon", "sentinel/gemini-4-argon@think=medium"} {
 		if !MatchesModel(m, wanted) {
 			t.Fatalf("expected MatchesModel to match %q", wanted)
 		}

@@ -69,7 +69,7 @@ func (ac *AccountClient) UploadFile(ctx context.Context, data []byte, filename, 
 	return uploaded, err
 }
 
-func (ac *AccountClient) uploadFileLocked(ctx context.Context, sc *transport.StealthClient, data []byte, filename, contentType string) (UploadedFile, error) {
+func (ac *AccountClient) uploadFileLocked(ctx context.Context, sc *transport.SentinelClient, data []byte, filename, contentType string) (UploadedFile, error) {
 	if filename == "" {
 		filename = "image.png"
 	}
@@ -93,7 +93,7 @@ func (ac *AccountClient) uploadFileLocked(ctx context.Context, sc *transport.Ste
 
 	var randHex [8]byte
 	_, _ = rand.Read(randHex[:])
-	boundary := "----GeminiBridgeUpload" + hex.EncodeToString(randHex[:])
+	boundary := "----GeminiSentinelUpload" + hex.EncodeToString(randHex[:])
 
 	var body bytes.Buffer
 	fmt.Fprintf(&body, "--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n", boundary, safeName, contentType)
@@ -303,7 +303,7 @@ func (ac *AccountClient) StreamGenerateLive(
 
 func (ac *AccountClient) streamGenerateLocked(
 	ctx context.Context,
-	sc *transport.StealthClient,
+	sc *transport.SentinelClient,
 	prompt string,
 	opts StreamOptions,
 	onFrame func(update *LineParseResult) error,

@@ -296,7 +296,7 @@ func FetchRemoteImage(ctx context.Context, rawURL string, index int) (*Attachmen
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return nil, transport.NewUpstreamError("invalid remote image URL", 400, "invalid_request_error", nil, err)
 	}
-	allowPrivate := os.Getenv("BRIDGE_ALLOW_PRIVATE_IMAGE_URLS") == "1"
+	allowPrivate := os.Getenv("SENTINEL_ALLOW_PRIVATE_IMAGE_URLS") == "1"
 	if !allowPrivate {
 		if err := resolveAndValidateImageHost(ctx, parsed.Host); err != nil {
 			return nil, transport.NewUpstreamError("blocked remote image host: "+err.Error(), 400, "invalid_request_error", nil, err)

@@ -53,7 +53,6 @@ func main() {
 	}
 
 	cfg := config.Load()
-	migrateLegacyHome(cfg)
 	if *statusOnce {
 		os.Exit(runStatus(cfg))
 	}
@@ -76,7 +75,6 @@ func main() {
 		// Reload config so the freshly persisted keys/accounts are visible,
 		// then fall through to start the server in the same process.
 		cfg = config.Load()
-		migrateLegacyHome(cfg)
 	}
 	if *loginAcct != "" {
 		if err := runInteractiveLogin(cfg, *loginAcct, dbOrProfile); err != nil {
@@ -200,7 +198,7 @@ func validateServerBind(cfg config.Config) error {
 // key is allowed (admin endpoints stay disabled and return 401/403) because
 // per-account tokens still protect chat completions; operators needing
 // /v1/accounts, /v1/quota, /v1/sessions, /v1/refresh or /metrics must set a
-// strong SENTINEL_API_KEY (HEARTH_API_KEY/BRIDGE_API_KEY still accepted) of at least 16 characters.
+// strong SENTINEL_API_KEY of at least 16 characters.
 func validateAuthConfig(cfg config.Config, loadedAccounts int) error {
 	if cfg.APIKey == "public" {
 		return fmt.Errorf("refusing to start with a placeholder admin key: set a strong random SENTINEL_API_KEY (>=16 chars) or unset it to disable admin endpoints")
@@ -214,52 +212,6 @@ func validateAuthConfig(cfg config.Config, loadedAccounts int) error {
 		log.Printf("[auth] SENTINEL_API_KEY is unset: admin endpoints (/v1/accounts, /v1/quota, /v1/sessions, /v1/refresh, /metrics) will deny all requests until a strong key is configured")
 	}
 	return nil
-}
-
-// migrateLegacyHome copies account files from previous projects' data
-// directories into the new one on first run. It never deletes sources and
-// never overwrites files that already exist in the destination.
-func migrateLegacyHome(cfg config.Config) {
-	for _, legacy := range config.LegacyHomeDirs() {
-		if cfg.HomeDir == legacy {
-			return
-		}
-	}
-	if fresh, err := os.ReadDir(cfg.AccountsDir); err == nil && len(fresh) > 0 {
-		return
-	}
-	for _, legacy := range config.LegacyHomeDirs() {
-		legacyAccts := filepath.Join(legacy, "accounts")
-		entries, err := os.ReadDir(legacyAccts)
-		if err != nil || len(entries) == 0 {
-			continue
-		}
-		if err := os.MkdirAll(cfg.AccountsDir, 0o700); err != nil {
-			log.Printf("[migrate] cannot create %s: %v", cfg.AccountsDir, err)
-			return
-		}
-		moved := 0
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-				continue
-			}
-			src := filepath.Join(legacyAccts, e.Name())
-			dst := filepath.Join(cfg.AccountsDir, e.Name())
-			if _, err := os.Stat(dst); err == nil {
-				continue
-			}
-			raw, err := os.ReadFile(src)
-			if err != nil || len(raw) == 0 {
-				continue
-			}
-			if err := os.WriteFile(dst, raw, 0o600); err == nil {
-				moved++
-			}
-		}
-		if moved > 0 {
-			log.Printf("[migrate] copied %d account file(s) from %s to %s (source left untouched)", moved, legacyAccts, cfg.AccountsDir)
-		}
-	}
 }
 
 // runStatus performs offline preflight checks and reports next steps.
@@ -512,5 +464,5 @@ func openBrowserURL(url, browser, profileDir string) {
 
 func printStandaloneConnectionInfo(cfg config.Config, acctName string) {
 	fmt.Printf("  base url: http://%s:%d/v1\n", cfg.Host, cfg.Port)
-	fmt.Printf("  api key : sentinel-%s (or %s; legacy hearth-%s and gsb-%s also accepted)\n", acctName, acctName, acctName, acctName)
+	fmt.Printf("  api key : sentinel-%s (or %s)\n", acctName, acctName)
 }

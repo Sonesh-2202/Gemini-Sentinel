@@ -27,7 +27,7 @@ var (
 )
 
 // Rotator performs dual-path Google session keepalive over the account's own
-// isolated StealthClient:
+// isolated SentinelClient:
 //  1. Sentinel POST /RotateCookies ([000,"-0000000000000000000"]) to renew
 //     short-lived __Secure-1PSIDTS / __Secure-3PSIDTS (~20-30 min TTL).
 //  2. Iframe GET /RotateCookiesPage?og_pid=658 -> POST /RotateCookies ([658,"<id>"])
@@ -53,8 +53,8 @@ type RotateResult struct {
 }
 
 // RotateAccount executes both the 1PSIDTS sentinel rotation and the 658 iframe
-// SIDCC rotation using the account's dedicated StealthClient.
-func (r *Rotator) RotateAccount(ctx context.Context, accountID string, currentCookie string, sc *transport.StealthClient) (*RotateResult, error) {
+// SIDCC rotation using the account's dedicated SentinelClient.
+func (r *Rotator) RotateAccount(ctx context.Context, accountID string, currentCookie string, sc *transport.SentinelClient) (*RotateResult, error) {
 	cookie := currentCookie
 	rotatedAny := false
 	lastStatus := 0

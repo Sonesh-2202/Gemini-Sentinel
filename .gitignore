@@ -1,5 +1,6 @@
 # Compiled binaries & test artifacts
-/gsb
+/sentinel
+/sentinel.exe
 *.test
 *.prof
 *.out

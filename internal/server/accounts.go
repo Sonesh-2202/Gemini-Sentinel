@@ -43,17 +43,6 @@ func (s *Server) registerAccountTokensLocked(rawID, targetID string) {
 			s.tokenToAcct[tok] = targetID
 		}
 	}
-	// Legacy hearth-<id> and gsb-<id> tokens from previous brands keep
-	// working, but never override an existing mapping.
-	for _, prefix := range config.LegacyTokenPrefixes {
-		if legacy := prefix + rawID; legacy != "" {
-			if _, explicit := s.Cfg.AccountTokens[legacy]; !explicit {
-				if _, taken := s.tokenToAcct[legacy]; !taken {
-					s.tokenToAcct[legacy] = targetID
-				}
-			}
-		}
-	}
 }
 
 // Accounts returns a snapshot of the loaded accounts.
@@ -126,7 +115,7 @@ func (s *Server) LoadCredentials() int {
 
 	s.mu.Lock()
 	s.accounts = deduped
-	// Auto-populate gsb-<id> (and raw <id>) so 9router and direct harnesses work out of the box.
+	// Auto-populate raw <id> so 9router and direct harnesses work out of the box.
 	byEmail := make(map[string]string, len(deduped))
 	for _, a := range deduped {
 		s.registerAccountTokensLocked(a.ID, a.ID)

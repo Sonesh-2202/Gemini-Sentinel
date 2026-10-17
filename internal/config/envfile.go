@@ -109,11 +109,11 @@ func EnvFileName(dir string) string {
 	return filepath.Join(dir, DotEnvFileName)
 }
 
-// resolveHomeDir mirrors FromEnv's data-home resolution (SENTINEL_* first,
-// with legacy fallbacks) so `.env` discovery and FromEnv never disagree.
+// resolveHomeDir mirrors FromEnv's data-home resolution so `.env`
+// discovery and FromEnv never disagree.
 func resolveHomeDir() string {
 	home, _ := os.UserHomeDir()
-	return envChain("SENTINEL_HOME", filepath.Join(home, ".gemini-sentinel"))
+	return envStr("SENTINEL_HOME", filepath.Join(home, ".gemini-sentinel"))
 }
 
 // applyDotEnvDefaults loads the sentinel `.env` file(s) and applies each key
@@ -130,7 +130,6 @@ func applyDotEnvDefaults() {
 		return
 	}
 	dirs := []string{resolveHomeDir()}
-	dirs = append(dirs, LegacyHomeDirs()...)
 	for _, dir := range dirs {
 		applyDotEnvPairs(LoadDotEnv(EnvFileName(dir)))
 	}

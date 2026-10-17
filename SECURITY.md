@@ -8,7 +8,7 @@ full test suite (`go vet ./...`, `go test -race ./...`).
 
 ## Threat model
 
-`gsb` holds Google session cookies, which are **equivalent to passwords**.
+sentinel holds Google session cookies, which are **equivalent to passwords**.
 Anyone who can reach the daemon's HTTP port with a valid API key can spend
 your Gemini quota and read your prompts. Anyone who obtains a cookie file
 can impersonate your Google session until the cookie is revoked.
@@ -24,7 +24,7 @@ daemon on loopback and place a separately hardened HTTPS reverse proxy
 
 Open a private issue or contact the maintainer directly. Do not post
 cookies, API keys, prompts, or `accounts/*.json` contents in any report.
-Include: version (`gsb --version`), OS, Go version, redacted configuration
+Include: version (`sentinel --version`), OS, Go version, redacted configuration
 (key names only, never values), and steps to reproduce.
 
 ## Incident response: leaked cookies

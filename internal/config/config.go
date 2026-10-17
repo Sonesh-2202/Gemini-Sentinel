@@ -11,8 +11,7 @@ import (
 	"time"
 )
 
-// Config holds all runtime settings for the hearth daemon.
-// Environment variables are 100% compatible with gemini-app-bridge.
+// Config holds all runtime settings for the sentinel daemon.
 type Config struct {
 	Host               string
 	Port               int
@@ -71,27 +70,9 @@ const (
 	TokenPrefix = "sentinel-"
 )
 
-// LegacyTokenPrefixes are earlier brands' token prefixes, still accepted.
-var LegacyTokenPrefixes = []string{"hearth-", "gsb-"}
-
-// LegacyModelPrefixes are earlier brands' model prefixes, still accepted.
-var LegacyModelPrefixes = []string{"hearth/", "gsb/"}
-
-// LegacyHomeDirs returns previous projects' data directories for migration,
-// newest first.
-func LegacyHomeDirs() []string {
-	home, _ := os.UserHomeDir()
-	return []string{
-		filepath.Join(home, ".hearth"),
-		filepath.Join(home, ".gemini-stealth-bridge"),
-	}
-}
-
 // FromEnv constructs a Config from process environment variables.
-// SENTINEL_* names take precedence; HEARTH_*, then BRIDGE_* (and HOST/PORT),
-// remain accepted so existing setups keep working. A local `.env` file inside
-// the data home is loaded first but only fills keys that are not already
-// present in the environment, so explicit exports always win.
+// A local `.env` file inside the data home is loaded first, but only fills
+// keys not already present in the environment, so explicit exports always win.
 func FromEnv() *Config {
 	applyDotEnvDefaults()
 	dataHome := resolveHomeDir()
@@ -99,7 +80,7 @@ func FromEnv() *Config {
 	accountsDir := filepath.Join(dataHome, "accounts")
 
 	tokens := make(map[string]string)
-	for _, pair := range strings.FieldsFunc(envChain("SENTINEL_ACCOUNT_TOKENS", ""), func(r rune) bool { return r == ',' || r == ';' }) {
+	for _, pair := range strings.FieldsFunc(envStr("SENTINEL_ACCOUNT_TOKENS", ""), func(r rune) bool { return r == ',' || r == ';' }) {
 		if idx := strings.IndexByte(pair, ':'); idx > 0 {
 			tok := strings.TrimSpace(pair[:idx])
 			acc := strings.TrimSpace(pair[idx+1:])
@@ -109,48 +90,48 @@ func FromEnv() *Config {
 		}
 	}
 
-	defThinkKey := strings.ToLower(strings.TrimSpace(envChain("SENTINEL_DEFAULT_THINKING", "high")))
+	defThinkKey := strings.ToLower(strings.TrimSpace(envStr("SENTINEL_DEFAULT_THINKING", "high")))
 	defThink, ok := ThinkingLevels[defThinkKey]
 	if !ok {
 		defThink = 2
 	}
 
-	impersonate := envChain("SENTINEL_IMPERSONATE", "chrome_150_psk")
+	impersonate := envStr("SENTINEL_IMPERSONATE", "chrome_150_psk")
 	ua, chUA, platform := browserHeadersForOS(runtime.GOOS, impersonate)
 
 	return &Config{
-		Host:               firstNonEmpty(os.Getenv("SENTINEL_HOST"), os.Getenv("HEARTH_HOST"), os.Getenv("BRIDGE_HOST"), envStr("HOST", "127.0.0.1")),
-		Port:               firstNonEmptyIntN(20133, "SENTINEL_PORT", "HEARTH_PORT", "BRIDGE_PORT", "PORT"),
+		Host:               firstNonEmpty(os.Getenv("SENTINEL_HOST"), envStr("HOST", "127.0.0.1")),
+		Port:               firstNonEmptyIntN(20133, "SENTINEL_PORT", "PORT"),
 		HomeDir:            dataHome,
 		CredFile:           credFile,
 		AccountsDir:        accountsDir,
 		CookieDB:           strings.TrimSpace(os.Getenv("CHROME_COOKIES")),
-		APIKey:             strings.TrimSpace(envChain("SENTINEL_API_KEY", "")),
+		APIKey:             strings.TrimSpace(envStr("SENTINEL_API_KEY", "")),
 		AccountTokens:      tokens,
-		Temporary:          envChainBool("SENTINEL_TEMPORARY", false),
-		RejectDowngrade:    envChainBool("SENTINEL_REJECT_DOWNGRADE", true),
-		LiveThoughts:       envChainBool("SENTINEL_LIVE_THOUGHTS", true),
-		SessionCache:       envChainBool("SENTINEL_SESSION_CACHE", true),
-		KeepToolPreamble:   envChainBool("SENTINEL_TOOL_PREAMBLE", false),
-		MaxPromptChars:     envChainInt("SENTINEL_MAX_PROMPT_CHARS", 850000),
-		MaxOldToolChars:    envChainInt("SENTINEL_MAX_OLD_TOOL_CHARS", 32000),
-		RotateCookiesEvery: time.Duration(envChainInt("SENTINEL_ROTATE_COOKIES_MS", 540000)) * time.Millisecond,
-		ModelRefreshEvery:  time.Duration(envChainInt("SENTINEL_MODEL_REFRESH_MS", 600000)) * time.Millisecond,
-		StreamTimeout:      time.Duration(envChainInt("SENTINEL_STREAM_TIMEOUT_MS", 600000)) * time.Millisecond,
-		FirstByteTimeout:   time.Duration(envChainInt("SENTINEL_FIRST_BYTE_TIMEOUT_MS", 60000)) * time.Millisecond,
-		StallTimeout:       time.Duration(envChainInt("SENTINEL_STALL_TIMEOUT_MS", 90000)) * time.Millisecond,
-		IdleSessionTimeout: time.Duration(envChainInt("SENTINEL_IDLE_SESSION_MS", 180000)) * time.Millisecond,
-		MaxSessions:        envChainInt("SENTINEL_MAX_SESSIONS", 16),
-		MaxQueueDepth:      envChainInt("SENTINEL_MAX_QUEUE", 4),
-		SessionWaitTimeout: time.Duration(envChainInt("SENTINEL_SESSION_WAIT_MS", 10000)) * time.Millisecond,
-		ProxyURL:           strings.TrimSpace(envChain("SENTINEL_PROXY_SERVER", "")),
+		Temporary:          envBool("SENTINEL_TEMPORARY", false),
+		RejectDowngrade:    envBool("SENTINEL_REJECT_DOWNGRADE", true),
+		LiveThoughts:       envBool("SENTINEL_LIVE_THOUGHTS", true),
+		SessionCache:       envBool("SENTINEL_SESSION_CACHE", true),
+		KeepToolPreamble:   envBool("SENTINEL_TOOL_PREAMBLE", false),
+		MaxPromptChars:     envInt("SENTINEL_MAX_PROMPT_CHARS", 850000),
+		MaxOldToolChars:    envInt("SENTINEL_MAX_OLD_TOOL_CHARS", 32000),
+		RotateCookiesEvery: time.Duration(envInt("SENTINEL_ROTATE_COOKIES_MS", 540000)) * time.Millisecond,
+		ModelRefreshEvery:  time.Duration(envInt("SENTINEL_MODEL_REFRESH_MS", 600000)) * time.Millisecond,
+		StreamTimeout:      time.Duration(envInt("SENTINEL_STREAM_TIMEOUT_MS", 600000)) * time.Millisecond,
+		FirstByteTimeout:   time.Duration(envInt("SENTINEL_FIRST_BYTE_TIMEOUT_MS", 60000)) * time.Millisecond,
+		StallTimeout:       time.Duration(envInt("SENTINEL_STALL_TIMEOUT_MS", 90000)) * time.Millisecond,
+		IdleSessionTimeout: time.Duration(envInt("SENTINEL_IDLE_SESSION_MS", 180000)) * time.Millisecond,
+		MaxSessions:        envInt("SENTINEL_MAX_SESSIONS", 16),
+		MaxQueueDepth:      envInt("SENTINEL_MAX_QUEUE", 4),
+		SessionWaitTimeout: time.Duration(envInt("SENTINEL_SESSION_WAIT_MS", 10000)) * time.Millisecond,
+		ProxyURL:           strings.TrimSpace(envStr("SENTINEL_PROXY_SERVER", "")),
 		ImpersonateProfile: impersonate,
 		DefaultThinking:    defThink,
 		UserAgent:          ua,
 		SecCHUA:            chUA,
 		SecCHUAPlatform:    platform,
-		LogLevel:           strings.ToLower(strings.TrimSpace(envChain("SENTINEL_LOG_LEVEL", "info"))),
-		AutoAdminKey:       envChainBool("SENTINEL_AUTO_ADMIN_KEY", true),
+		LogLevel:           strings.ToLower(strings.TrimSpace(envStr("SENTINEL_LOG_LEVEL", "info"))),
+		AutoAdminKey:       envBool("SENTINEL_AUTO_ADMIN_KEY", true),
 		EnvFilePath:        EnvFileName(dataHome),
 	}
 }
@@ -242,6 +223,7 @@ func browserHeadersForOS(goos, profile string) (ua, secCHUA, platform string) {
 	return ua, secCHUA, platform
 }
 
+// legacy env-var tiers were removed: only SENTINEL_* names are honored.
 func envStr(key, fallback string) string {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
@@ -268,55 +250,6 @@ func firstNonEmptyIntN(fallback int, keys ...string) int {
 				return n
 			}
 			return fallback
-		}
-	}
-	return fallback
-}
-
-// legacyChain expands a SENTINEL_* key into the older accepted names.
-func legacyChain(primary string) []string {
-	cands := []string{primary}
-	if strings.HasPrefix(primary, "SENTINEL_") {
-		suffix := strings.TrimPrefix(primary, "SENTINEL_")
-		cands = append(cands, "HEARTH_"+suffix, "BRIDGE_"+suffix)
-	}
-	return cands
-}
-
-// envChain returns the first non-empty value of a SENTINEL_* key and its
-// legacy HEARTH_*/BRIDGE_* equivalents, or def.
-func envChain(primary, def string) string {
-	for _, k := range legacyChain(primary) {
-		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
-			return v
-		}
-	}
-	return def
-}
-
-func envChainInt(primary string, fallback int) int {
-	for _, k := range legacyChain(primary) {
-		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
-			if n, err := strconv.Atoi(v); err == nil {
-				return n
-			}
-			return fallback
-		}
-	}
-	return fallback
-}
-
-func envChainBool(primary string, fallback bool) bool {
-	for _, k := range legacyChain(primary) {
-		if v := strings.ToLower(strings.TrimSpace(os.Getenv(k))); v != "" {
-			switch v {
-			case "1", "true", "yes", "on":
-				return true
-			case "0", "false", "no", "off":
-				return false
-			default:
-				return fallback
-			}
 		}
 	}
 	return fallback

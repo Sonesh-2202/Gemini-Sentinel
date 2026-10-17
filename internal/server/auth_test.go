@@ -112,7 +112,7 @@ func TestAuthValidAdminAndAccount(t *testing.T) {
 		t.Errorf("admin /v1/refresh: got %d (%s)", rec.Code, rec.Body.String())
 	}
 	req2 := httptest.NewRequest(http.MethodPost, "/v1/refresh", nil)
-	req2.Header.Set("Authorization", "Bearer gsb-acctA")
+	req2.Header.Set("Authorization", "Bearer sentinel-acctA")
 	rec2 := httptest.NewRecorder()
 	srv.ServeHTTP(rec2, req2)
 	if rec2.Code != 403 {
@@ -142,14 +142,14 @@ func TestAuthAccountIsolation(t *testing.T) {
 	rec := httptest.NewRecorder()
 	scope := srv.ResolveAuthScope(req)
 	if !scope.OK || scope.AccountID != "acctA" || scope.Admin {
-		t.Fatalf("gsb-acctA scope = %+v, want AccountID=acctA", scope)
+		t.Fatalf("x-api-key scope = %+v, want AccountID=acctA", scope)
 	}
 	_ = rec
 }
 
 func TestAuthQueryStringRejected(t *testing.T) {
 	srv := newAuthTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/v1/models?key=gsb-acctA", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/models?key=sentinel-acctA", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 	if rec.Code != 401 {
@@ -178,18 +178,13 @@ func TestAuthDoesNotLeakExistence(t *testing.T) {
 	}
 }
 
-func TestAuthLegacyTokensAccepted(t *testing.T) {
+func TestAuthUnknownRawTokenHotLoadLimit(t *testing.T) {
 	srv := newAuthTestServer(t)
-	// Tokens issued under previous brands keep working.
-	for _, legacy := range []string{"hearth-acctA", "gsb-acctA"} {
-		if rec := doReq(srv, http.MethodGet, "/v1/models", legacy, ""); rec.Code != 200 {
-			t.Errorf("legacy %s token: got %d, want 200", legacy, rec.Code)
+	// Unknown safe-ID tokens route through hot-load, then fail closed.
+	for _, tok := range []string{"unknown-id-1", "unknown-id-2"} {
+		if rec := doReq(srv, http.MethodGet, "/v1/models", tok, ""); rec.Code != 401 {
+			t.Errorf("unknown token %q: got %d, want 401", tok, rec.Code)
 		}
-	}
-	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	req.Header.Set("Authorization", "Bearer hearth-acctB")
-	if scope := srv.ResolveAuthScope(req); !scope.OK || scope.AccountID != "acctB" {
-		t.Fatalf("legacy hearth-acctB scope = %+v, want AccountID=acctB", scope)
 	}
 }
 

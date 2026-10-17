@@ -28,7 +28,7 @@ var essentialSet = func() map[string]bool {
 	return m
 }()
 
-// CredentialFile represents the JSON structure stored in ~/.hearth/accounts/<id>.json.
+// CredentialFile represents the JSON structure stored in ~/.sentinel/accounts/<id>.json.
 type CredentialFile struct {
 	Kind       string `json:"kind"`
 	Name       string `json:"name,omitempty"`

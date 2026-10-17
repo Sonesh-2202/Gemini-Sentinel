@@ -89,9 +89,9 @@ func TestDualPathCookieRotator(t *testing.T) {
 		},
 	}
 
-	sc, err := transport.NewStealthClient(transport.ClientConfig{CustomDoer: doer})
+	sc, err := transport.NewSentinelClient(transport.ClientConfig{CustomDoer: doer})
 	if err != nil {
-		t.Fatalf("NewStealthClient: %v", err)
+		t.Fatalf("NewSentinelClient: %v", err)
 	}
 
 	rot := NewRotator()

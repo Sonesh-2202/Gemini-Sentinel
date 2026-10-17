@@ -410,7 +410,7 @@ func TestHTTPHandlerEndpoints(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"hearth"`) {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"sentinel"`) {
 		t.Fatalf("unexpected /health response: %d %s", rec.Code, rec.Body.String())
 	}
 
@@ -423,7 +423,7 @@ func TestHTTPHandlerEndpoints(t *testing.T) {
 	}
 }
 
-func TestHearthAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
+func TestAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 	cfg := config.Load()
 	cfg.HomeDir = t.TempDir()
 	cfg.AccountTokens = nil // test automatic sentinel-<id> and raw <id> registration
@@ -452,8 +452,8 @@ func TestHearthAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 	}
 	srv.SetAccounts([]*AccountState{acct})
 
-	// 1. Auth via sentinel-<id>, legacy hearth-<id>/gsb-<id>, raw <id>, x-api-key, and model prefix sentinel/ + @think=high
-	for _, token := range []string{"sentinel-acc1", "hearth-acc1", "gsb-acc1", "acc1"} {
+	// 1. Auth via sentinel-<id>, raw <id>, x-api-key, and model prefix sentinel/ + @think=high
+	for _, token := range []string{"sentinel-acc1", "acc1"} {
 		reqBody := `{"model":"sentinel/gemini-pro@think=high","messages":[{"role":"user","content":"ping"}]}`
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqBody))
 		req.Header.Set("x-api-key", token)
@@ -465,16 +465,6 @@ func TestHearthAuthTokensPrefixModelResolutionAndBudgetThinking(t *testing.T) {
 		if capturedLevel != 2 {
 			t.Fatalf("expected @think=high -> ThinkingLevel 2, got %d", capturedLevel)
 		}
-	}
-
-	// 1b. Legacy hearth/ and gsb/ model prefixes still resolve.
-	reqLegacy := `{"model":"hearth/gemini-pro","messages":[{"role":"user","content":"ping"}]}`
-	reqL := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(reqLegacy))
-	reqL.Header.Set("Authorization", "Bearer sentinel-acc1")
-	recL := httptest.NewRecorder()
-	srv.ServeHTTP(recL, reqL)
-	if recL.Code != 200 {
-		t.Fatalf("legacy hearth/ model prefix failed with %d: %s", recL.Code, recL.Body.String())
 	}
 
 	// 2. Thinking budget_tokens -> medium (4)
@@ -497,7 +487,7 @@ func TestResponsesEndpointStreamingAndNonStreaming(t *testing.T) {
 	acct.mu.Unlock()
 	// 1. Non-streaming POST /v1/responses
 	reqBody := `{
-		"model": "gsb/gemini-pro",
+		"model": "sentinel/gemini-pro",
 		"instructions": "Be concise.",
 		"reasoning": {"effort": "high"},
 		"input": "What is 6 * 7?"
@@ -527,7 +517,7 @@ func TestResponsesEndpointStreamingAndNonStreaming(t *testing.T) {
 	})
 	acct.mu.Unlock()
 	streamReqBody := `{
-		"model": "gsb/gemini-pro",
+		"model": "sentinel/gemini-pro",
 		"stream": true,
 		"tools": [{
 			"type": "function",
@@ -563,7 +553,7 @@ func TestResponsesEndpointStreamingAndNonStreaming(t *testing.T) {
 }
 
 func TestRemoteImageURLFetchAndMagicByteMIME(t *testing.T) {
-	t.Setenv("BRIDGE_ALLOW_PRIVATE_IMAGE_URLS", "1")
+	t.Setenv("SENTINEL_ALLOW_PRIVATE_IMAGE_URLS", "1")
 	// Minimal JPEG magic bytes (\xff\xd8\xff\xe0...)
 	jpegBytes := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0xff, 0xd9}
 	imgSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -658,7 +648,7 @@ func TestBufferedStreamRevisionLiveThoughtsAndCrossModelQuota(t *testing.T) {
 	})
 	acct.mu.Unlock()
 	sReqBody := `{
-		"model": "gsb/gemini-pro",
+		"model": "sentinel/gemini-pro",
 		"stream": true,
 		"tools": [{
 			"type": "function",

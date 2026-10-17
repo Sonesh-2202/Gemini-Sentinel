@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 # start.sh — Launch Gemini-Sentinel on port 20133 with isolated
 # account storage in ~/.gemini-sentinel/accounts/*.json.
-#
-# Upgrading? Just run this script: sentinel copies accounts from earlier
-# data dirs (~/.hearth, ~/.gemini-stealth-bridge) on first start
-# (sources left untouched) and still accepts hearth-<id> and gsb-<id> tokens.
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
-DIR="${SENTINEL_HOME:-${HEARTH_HOME:-${BRIDGE_HOME:-$HOME/.gemini-sentinel}}}"
+DIR="${SENTINEL_HOME:-$HOME/.gemini-sentinel}"
 ACCOUNTS_DIR="$DIR/accounts"
 mkdir -p "$ACCOUNTS_DIR"
 export SENTINEL_HOME="$DIR"
-export SENTINEL_PORT="${SENTINEL_PORT:-${HEARTH_PORT:-${BRIDGE_PORT:-${PORT:-20133}}}}"
+export SENTINEL_PORT="${SENTINEL_PORT:-${PORT:-20133}}"
 
 pairs=""
 for f in "$ACCOUNTS_DIR"/*.json; do
