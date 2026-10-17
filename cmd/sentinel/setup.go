@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -75,6 +76,9 @@ func runSetup(cfg config.Config, acctName, dbOrProfile string) error {
 	if !reSafeAccountName.MatchString(acctName) {
 		return fmt.Errorf("invalid account name %q (use 1-64 chars of A-Z a-z 0-9 . _ -)", acctName)
 	}
+	if extra := flag.Args(); len(extra) > 1 {
+		return fmt.Errorf("unexpected extra arguments %q — pass all flags (e.g. --chrome-profile) BEFORE the account name", extra[1:])
+	}
 
 	fmt.Printf("== Gemini-Sentinel setup — account %q ==\n", acctName)
 
@@ -99,7 +103,7 @@ func runSetup(cfg config.Config, acctName, dbOrProfile string) error {
 	ac, err := runImportChrome(cfg, acctName, dbOrProfile)
 	if err != nil {
 		return fmt.Errorf(
-			"browser import failed: %w\nHints:\n  - make sure you are signed in to https://gemini.google.com/app in a Chrome/Brave/Chromium/Edge/Firefox browser on this machine\n  - retry with an explicit profile:  sentinel --setup %s --chrome-profile \"Profile 4\"\n  - or sign in interactively:       sentinel --login %s\n  - or paste cookies manually:      sentinel --import-cookie %s --cookie-file ./cookies.json",
+			"browser import failed: %w\nHints:\n  - make sure you are signed in to https://gemini.google.com/app in a Chrome/Brave/Chromium/Edge/Firefox browser on this machine\n  - pick a browser/profile first (flags go BEFORE the account name):  sentinel --chrome-profile brave --setup %s\n  - or sign in interactively:       sentinel --login %s\n  - or paste cookies manually:      sentinel --import-cookie %s --cookie-file ./cookies.json",
 			err, acctName, acctName, acctName)
 	}
 

@@ -684,6 +684,9 @@ func bestHeaderFromRows(rows []CookieRow) string {
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
+		if strings.Contains(err.Error(), "being used by another process") {
+			return fmt.Errorf("open cookie db: %w — the browser that owns this profile is still running and holds the file locked; close the browser completely (all windows/background apps) and retry", err)
+		}
 		return err
 	}
 	defer in.Close()

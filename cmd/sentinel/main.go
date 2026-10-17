@@ -34,7 +34,7 @@ func main() {
 		loginAcct     = flag.String("login", "", "Interactive browser sign-in to capture a fresh session into ~/.gemini-sentinel/accounts/<name>.json")
 		importChrome  = flag.String("import-chrome", "", "Import Google cookies from local Chrome/Brave/Chromium/Edge/Firefox SQLite DB into accounts/<name>.json")
 		cookieDB      = flag.String("cookie-db", "", "Explicit path to browser Cookies SQLite database or profile directory for --import-chrome / --login")
-		chromeProfile = flag.String("chrome-profile", "", "Browser profile name (e.g. \"Profile 4\"), profile directory, or Cookies SQLite path for --import-chrome / --login")
+		chromeProfile = flag.String("chrome-profile", "", "Browser profile name (e.g. \"Profile 4\"), browser shortcut (chrome/brave/edge/vivaldi), or Cookies SQLite path; flags must come BEFORE the account name (e.g. sentinel --chrome-profile brave --setup main)")
 		importCookie  = flag.String("import-cookie", "", "Import raw Cookie header or Cookie-Editor JSON from --cookie-value, --cookie-file, or stdin into accounts/<name>.json")
 		cookieValue   = flag.String("cookie-value", "", "Raw Cookie header or JSON string for --import-cookie")
 		cookieFile    = flag.String("cookie-file", "", "Path to file containing raw Cookie header or Cookie-Editor JSON array for --import-cookie")

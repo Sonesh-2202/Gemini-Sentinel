@@ -4,7 +4,7 @@
 
 **Use your Gemini web subscription from any OpenAI-compatible app — no browser automation, no 600 MB headless Chrome.**
 
-[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go)](./go.mod)
+[![Go Version](https://img.shields.io/badge/Go-1.27%2B-00ADD8?style=flat-square&logo=go)](./go.mod)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
 [![Transport](https://img.shields.io/badge/Transport-uTLS_%2B_HTTP%2F2-blue?style=flat-square)](#1-architecture--how-it-works)
 [![API](https://img.shields.io/badge/OpenAI-Compatible-412991?style=flat-square&logo=openai)](#7-making-your-first-api-calls)
@@ -70,7 +70,7 @@
 ```text
 Your App (curl, OpenCode, Cline, Cursor, 9router…)
         │
-        │  OpenAI-style HTTP on [http://127.0.0.1:20133/v1](http://127.0.0.1:20133/v1)
+        │  OpenAI-style HTTP on http://127.0.0.1:20133/v1
         ▼
   ┌──────────────── sentinel ────────────────┐
   │ • Account keys  ──► Locked to 1 account  │
@@ -97,7 +97,7 @@ Each imported account receives **two dedicated API keys**: `sentinel-<name>` and
 
 - **Go 1.27.2 or newer** (check with `go version`; pinned in [`go.mod`](./go.mod)).
 - **OS:** Windows (PowerShell), macOS, or Linux, plus `curl` for testing.
-- **Browser:** Chrome, Brave, Chromium, Edge, or Firefox with an active logged-in session at `gemini.google.com/app`.
+- **Browser:** Chrome, Brave, Chromium, Edge, Vivaldi, or Firefox signed in at `gemini.google.com/app` — see [§4.1](#41-which-import-method-works-for-your-browser) for which import method your browser needs (recent Chrome/Brave/Edge use "App-Bound" encryption that requires a 2-minute cookie-export fallback).
 - **Environment:** A local machine you control (do not run as Administrator/root, and do not deploy on shared hosts without reviewing [`SECURITY.md`](./SECURITY.md)).
 
 ---
@@ -135,6 +135,9 @@ By default `--setup` **starts the server right away** (pass `--setup-no-start` t
 | **Model** | `gemini-pro`, `gemini-flash`, `gemini-argon`, `gemini-flash-lite` |
 
 > [!TIP]
+> **If your browser refuses direct import** (error: `failed to decrypt … App-Bound (v20)` — common on recent Chrome/Brave/Edge): don't worry, everything except the cookie copy is already saved. Jump to [§4 Step A](#step-a--copy-your-cookie-header-works-on-every-browser) and finish the import with the 2-minute cookie-header copy.
+
+> [!TIP]
 > **Second account or custom name?** `./sentinel --setup acc2` (any chars from `A–Z a–z 0–9 . _ -`). Re-running setup is idempotent and refreshes cookies for that account only.
 
 > [!NOTE]
@@ -148,7 +151,7 @@ By default `--setup` **starts the server right away** (pass `--setup-no-start` t
 Do not run untrusted prebuilt binaries with access to your browser profile. Build directly from a reviewed checkout:
 
 ```sh
-git clone [https://github.com/Sonesh-2202/gemini-sentinel.git](https://github.com/Sonesh-2202/gemini-sentinel.git)
+git clone https://github.com/Sonesh-2202/gemini-sentinel.git
 cd gemini-sentinel
 go mod download
 
@@ -165,7 +168,7 @@ go build -trimpath -o .\sentinel.exe .\cmd\sentinel
 Alternatively, install directly to your `GOPATH/bin` (requires lowercase module path):
 
 ```sh
-go install [github.com/sonesh-2202/gemini-sentinel/cmd/sentinel@latest](https://github.com/sonesh-2202/gemini-sentinel/cmd/sentinel@latest)
+go install github.com/sonesh-2202/gemini-sentinel/cmd/sentinel@latest
 ```
 
 ### Step 2 — Manual Admin Key (optional)
@@ -205,55 +208,112 @@ $env:SENTINEL_API_KEY="paste-your-64-char-hex-key-here"
 
 ## 4. Connect Your Google Account
 
-Choose **one** of the three methods below — or skip this section entirely: [`--setup`](#3-quick-start-build--configure) already performs **Method A** in one command. You can repeat this step for multiple accounts (`acc1`, `acc2`, etc. — allowed characters: `A–Z a–z 0–9 . _ -`, max 64 chars).
+`--setup` already performs this once for your default account. Repeat this section (`acc1`, `acc2`, … — allowed characters: `A–Z a–z 0–9 . _ -`, max 64 chars) for additional accounts.
 
-### Method A — Direct Browser Import (Recommended)
+### 4.1 Which import method works for your browser?
 
-Ensure you are logged into `gemini.google.com` in your browser—no need to close the browser window:
+Sentinel reads your Google session cookies and stores them locally in `~/.gemini-sentinel/accounts/<name>.json` (permissions `0600`). Whether it can read them **directly out of your browser's cookie store** depends on how your browser encrypts them:
+
+| Browser | Direct import (`--setup` / `--import-chrome`) | Notes |
+| :--- | :--- | :--- |
+| **Firefox** | ✅ Always works (via its `cookies.sqlite` path) | Firefox cookies are not OS-encrypted — see Step C. |
+| **Chromium-family** (Chrome / Brave / Edge / Vivaldi), older releases | ✅ Works | Standard `v10`/`v11` DPAPI decryption. |
+| **Chromium-family**, recent releases (Chrome 127+, current Brave/Edge) | ⚠️ May fail with `failed to decrypt N Google cookie(s) … (key_found=true)` | Uses Google's **"App-Bound" (v20)** encryption, which can only be decrypted by the browser's own elevation service. Use Step A below — expected behavior, not a bug. |
+
+> [!TIP]
+> Not sure which case you're in? Just try `sentinel --setup` first. If it succeeds you're done; if the App-Bound error appears, go straight to **Step A below** (works on *every* browser and profile). The setup's admin key and account settings are saved either way, so re-running costs nothing.
+
+### Step A — Copy your cookie header (works on every browser) ✅ Recommended fallback
+
+1. Open **`https://gemini.google.com/app`** in your browser and make sure you are signed in.
+2. Press **F12** (DevTools) → **Network** tab → reload the page → click the **first `app` request** in the list.
+3. Under **Request Headers**, find `cookie:` → right-click → **Copy value** (one long line).
+4. Save it to a local file, e.g. `cookies.txt` (PowerShell: right-click paste in Notepad → Save As `cookies.txt`).
+5. Import and delete the file right away:
 
 ```sh
-./sentinel --import-chrome acc1
+# Linux / macOS
+./sentinel --import-cookie main --cookie-file ./cookies.txt
+rm ./cookies.txt
+
+# Windows PowerShell
+.\sentinel.exe --import-cookie main --cookie-file .\cookies.txt
+Remove-Item .\cookies.txt -Force
+```
+
+> [!IMPORTANT]
+> That file contains **live session credentials** — treat it like a password. Import it and delete it in the same sitting; don't commit it, screenshot it, or leave it in your Downloads folder. (The import requires cookies for the `.google.com` domain — the DevTools request header always includes them.)
+
+### Step B — Cookie-Editor / cookie extension
+
+Install a cookie-export extension (e.g. **Cookie-Editor**), visit `https://gemini.google.com/app` **and** a `www.google.com` page, and export cookies (JSON or header line). The export must contain `SAPISID` and `__Secure-1PSID` (these live on the `.google.com` domain, so export there too). Then:
+
+```sh
+./sentinel --import-cookie main --cookie-file ./cookies.json
+```
+
+### Step C — Direct browser import (no extension, no DevTools)
+
+Works on Firefox and on Chromium-family builds that don't use App-Bound encryption:
+
+```sh
+# Chromium-family shortcuts: chrome / brave / edge / chromium / vivaldi
+./sentinel --setup main --chrome-profile chrome
+./sentinel --setup main --chrome-profile brave
+```
+
+**Firefox:** point Sentinel at your profile's `cookies.sqlite` directly:
+
+```sh
+# Windows (profile folder name varies — check %APPDATA%\Mozilla\Firefox\Profiles\)
+.\sentinel.exe --import-chrome main --chrome-profile "C:\Users\<you>\AppData\Roaming\Mozilla\Firefox\Profiles\xxxxxxxx.default-release\cookies.sqlite"
+
+# Linux
+./sentinel --import-chrome main --chrome-profile ~/.mozilla/firefox/xxxxxxxx.default/cookies.sqlite
+
+# macOS
+./sentinel --import-chrome main --chrome-profile ~/Library/Application\ Support/Firefox/Profiles/xxxxxxxx.default/cookies.sqlite
 ```
 
 <details>
-<summary><b>Using Multiple Browser Profiles? (Click to expand)</b></summary>
-
-Specify the profile name or full directory path:
+<summary><b>Multiple profiles / custom paths (Click to expand)</b></summary>
 
 ```sh
-# By profile name (Windows, macOS, Linux)
+# By profile name
+./sentinel --chrome-profile chrome:"Profile 4" --setup main
+# — or —
 ./sentinel --import-chrome acc1 --chrome-profile "Profile 4"
 
 # By profile folder (Linux / macOS)
 ./sentinel --import-chrome acc1 --chrome-profile ~/.config/google-chrome/Default
 
-# By profile folder (Windows PowerShell / cmd)
+# By profile folder (Windows PowerShell)
 .\sentinel.exe --import-chrome acc1 --chrome-profile "C:\Users\<you>\AppData\Local\Google\Chrome\User Data\Profile 4"
 ```
 </details>
 
-`sentinel` extracts and decrypts your `google.com` cookies, verifies them against Gemini's `/app` bootstrap, saves `~/.gemini-sentinel/accounts/acc1.json` (permissions `0600`), and prints your email alongside your keys (`sentinel-acc1`, `acc1`).
+> [!WARNING]
+> **Flags go BEFORE the account name.** Go's flag parsing stops at the first non-flag argument, so `sentinel --setup main --chrome-profile brave` silently ignores `--chrome-profile`. Use `sentinel --chrome-profile brave --setup main` instead. `--setup` rejects stray arguments and tells you exactly this.
 
-### Method B — Import via Cookie Extension
-
-Export your `google.com` cookies (JSON array or raw `Cookie:` header containing at least `SAPISID` and `__Secure-1PSID`) using a browser extension like Cookie-Editor:
-
-```sh
-# From a JSON or text file (delete the file immediately after importing!)
-./sentinel --import-cookie acc1 --cookie-file ./cookies.json
-
-# Or pass the raw cookie string directly
-./sentinel --import-cookie acc1 --cookie-value "SAPISID=…; __Secure-1PSID=…; __Secure-1PSIDTS=…"
-```
-
-### Method C — Interactive Login Helper
+### Step D — Interactive login helper
 
 ```sh
-./sentinel --login acc1
-./sentinel --login acc1 --chrome-profile "Profile 4"   # for multi-profile setups
+./sentinel --login main
+./sentinel --login main --chrome-profile brave:"Profile 4"   # multi-profile setups
 ```
 
-Opens `https://gemini.google.com/app` in your browser. Sign in, return to the terminal, and press **Enter** to auto-import (or paste a raw cookie string).
+Opens `https://gemini.google.com/app` in your browser. Sign in, return to the terminal and press **Enter**: Sentinel auto-imports from the selected browser profile — using the same decryption as Step C, so on App-Bound browsers choose to paste a raw cookie header (from Step A) at the prompt instead.
+
+### Closing the browser before a direct import
+
+Chromium-family browsers keep their Cookies database **locked while running**. If you see `copy cookie db: … being used by another process — close the browser completely (all windows/background apps) and retry`, fully exit the browser (check the system tray/background apps too) and retry. Closing Brave/Chrome does **not** sign you out — cookies are stored on disk. This applies to direct imports (Step C) only; the cookie-header/extension methods (Steps A & B) can run with the browser open.
+
+### Do I need to paste cookies every time? ✅ No
+
+- **Once imported, Sentinel keeps the session alive itself.** It runs automatic background cookie rotation (`__Secure-1PSIDTS` refresh and `SIDCC` rotation, plus idle-session keep-alike behavior), so the exported session can last weeks or months without any manual action.
+- **You only re-import when the session genuinely dies** — the daemon logs `502 upstream_auth_error` / `--probe` reports auth problems. That happens if you sign out of that Google account in the browser, Google revokes the session, the cookies rot for long offline periods, or you delete the account file.
+- Re-running `sentinel --setup <name>` (or any import method for the same name) is **idempotent**: it refreshes that account's cookies only and reuses the existing admin key in `~/.gemini-sentinel/.env`.
+
 
 ---
 
@@ -276,7 +336,7 @@ Account acc1            email=user@example.com        capacity=2 models=4 fails=
   quota: Gemini Pro          remaining=48384/48384 resets=2026-10-16T08:00:00Z
 ```
 
-Note the exact model IDs listed (`gemini-flash`, `gemini-pro`, etc.). If `--probe` fails, check [Troubleshooting](#16-troubleshooting) before starting the server.
+Note the exact model IDs listed (`gemini-flash`, `gemini-pro`, etc.) — these are the names your clients can request. If `--probe` fails, check [Troubleshooting](#16-troubleshooting) before starting the server.
 
 **Additional CLI Helpers:**
 ```sh
@@ -300,16 +360,16 @@ If your `SENTINEL_API_KEY` / `SENTINEL_PROFILE` etc. are *not* set by `--setup` 
 **Startup output:**
 
 ```text
-sentinel (sentinel dev …) listening on [http://127.0.0.1:20133](http://127.0.0.1:20133)
+sentinel (sentinel dev …) listening on http://127.0.0.1:20133
   transport: browserless Chrome uTLS + HTTP/2 (chrome_150_psk)
   data:      /home/you/.gemini-sentinel (1 account(s) loaded)
-  models:    [http://127.0.0.1:20133/v1/models](http://127.0.0.1:20133/v1/models)
+  models:    http://127.0.0.1:20133/v1/models
 ```
 
 Verify health in another terminal (no API key required for `/health`):
 
 ```sh
-curl -s [http://127.0.0.1:20133/health](http://127.0.0.1:20133/health)
+curl -s http://127.0.0.1:20133/health
 # {"accounts":1,"models":4,"status":"ok",…}
 ```
 
@@ -322,14 +382,14 @@ All examples assume the server is running on `http://127.0.0.1:20133` with accou
 ### 7.1 List Available Models
 
 ```sh
-curl -s [http://127.0.0.1:20133/v1/models](http://127.0.0.1:20133/v1/models) \
+curl -s http://127.0.0.1:20133/v1/models \
   -H "Authorization: Bearer sentinel-acc1" | python3 -m json.tool
 ```
 
 ### 7.2 Chat Completions (Non-Streaming)
 
 ```sh
-curl -s [http://127.0.0.1:20133/v1/chat/completions](http://127.0.0.1:20133/v1/chat/completions) \
+curl -s http://127.0.0.1:20133/v1/chat/completions \
   -H "Authorization: Bearer sentinel-acc1" \
   -H "Content-Type: application/json" \
   -d '{
@@ -355,7 +415,7 @@ curl -s [http://127.0.0.1:20133/v1/chat/completions](http://127.0.0.1:20133/v1/c
 ### 7.3 Chat Completions (Streaming SSE)
 
 ```sh
-curl -N [http://127.0.0.1:20133/v1/chat/completions](http://127.0.0.1:20133/v1/chat/completions) \
+curl -N http://127.0.0.1:20133/v1/chat/completions \
   -H "Authorization: Bearer sentinel-acc1" \
   -H "Content-Type: application/json" \
   -d '{
@@ -370,7 +430,7 @@ Streams `data: {…}` SSE chunks ending in `data: [DONE]`, with `choices[0].delt
 ### 7.4 OpenAI Responses API
 
 ```sh
-curl -s [http://127.0.0.1:20133/v1/responses](http://127.0.0.1:20133/v1/responses) \
+curl -s http://127.0.0.1:20133/v1/responses \
   -H "Authorization: Bearer sentinel-acc1" \
   -H "Content-Type: application/json" \
   -d '{
@@ -401,6 +461,9 @@ Use any exact model slug from `--probe` or `/v1/models` (`gemini-flash`, `gemini
 | **Default Model Fallback** | `"model": ""` | Selects the first available model on that account |
 
 Model matching is case-insensitive and also accepts upstream model IDs or display names. Unrecognized models return `404 model_not_found` specifying which account failed the lookup.
+
+> [!TIP]
+> **New Gemini models from Google?** The live catalog refreshes automatically every 10 minutes (`SENTINEL_MODEL_REFRESH_MS`). When Google adds new models to Gemini Web, they appear on their own — no rebuild or reimport is needed. Check what's currently served with `./sentinel --probe` or `GET /v1/models`, then request the new slug directly (or use `Gemini`'s display name — matching is fuzzy).
 
 ---
 
@@ -447,7 +510,7 @@ Supports up to ~1M characters inline. When history exceeds `SENTINEL_MAX_PROMPT_
 Estimate token usage locally (~4 bytes/token) without making an upstream network call:
 
 ```sh
-curl -s [http://127.0.0.1:20133/v1/count-tokens](http://127.0.0.1:20133/v1/count-tokens) \
+curl -s http://127.0.0.1:20133/v1/count-tokens \
   -H "Authorization: Bearer sentinel-acc1" \
   -H "Content-Type: application/json" \
   -d '{"messages": [{"role": "user", "content": "Summarize this thread."}]}'
@@ -476,7 +539,7 @@ Validate configuration before starting the daemon (exits non-zero if bind is non
 Query live server metrics using the **admin key**:
 
 ```sh
-curl -s [http://127.0.0.1:20133/metrics](http://127.0.0.1:20133/metrics) -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s http://127.0.0.1:20133/metrics -H "Authorization: Bearer $SENTINEL_API_KEY"
 # sentinel_http_requests_total{method="GET",path="/v1/models",status="200"} 3
 # sentinel_accounts 1
 # sentinel_models 4
@@ -506,9 +569,9 @@ Works out of the box with **OpenCode, Cline, Cursor, Codex CLI, `omp`, and `curl
 1. **Create the `Gemini-Sentinel` Provider Node in `9router`** (`http://127.0.0.1:20128`):
 
 ```sh
-NODE_ID=$(curl -s -X POST [http://127.0.0.1:20128/api/provider-nodes](http://127.0.0.1:20128/api/provider-nodes) \
+NODE_ID=$(curl -s -X POST http://127.0.0.1:20128/api/provider-nodes \
   -H "Content-Type: application/json" \
-  -d '{"type":"openai-compatible","apiType":"chat","name":"Gemini-Sentinel","prefix":"sentinel","baseUrl":"[http://127.0.0.1:20133/v1](http://127.0.0.1:20133/v1)"}' \
+  -d '{"type":"openai-compatible","apiType":"chat","name":"Gemini-Sentinel","prefix":"sentinel","baseUrl":"http://127.0.0.1:20133/v1"}' \
   | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).node.id')
 echo "Node: $NODE_ID"
 ```
@@ -516,12 +579,12 @@ echo "Node: $NODE_ID"
 2. **Register each Google account as a provider entry:**
 
 ```sh
-NODE_ID=$(curl -s [http://127.0.0.1:20128/api/provider-nodes](http://127.0.0.1:20128/api/provider-nodes) \
+NODE_ID=$(curl -s http://127.0.0.1:20128/api/provider-nodes \
   | node -pe 'JSON.parse(fs.readFileSync(0,"utf8")).nodes.find(n => n.prefix === "sentinel").id')
 for f in ~/.gemini-sentinel/accounts/*.json; do
   [ -e "$f" ] || continue
   acc="$(basename "$f" .json)"
-  curl -s -X POST [http://127.0.0.1:20128/api/providers](http://127.0.0.1:20128/api/providers) \
+  curl -s -X POST http://127.0.0.1:20128/api/providers \
     -H "Content-Type: application/json" \
     -d "{\"provider\":\"$NODE_ID\",\"name\":\"sentinel-$acc\",\"apiKey\":\"sentinel-$acc\",\"priority\":1,\"allowOverwrite\":true}"
   echo
@@ -533,7 +596,7 @@ done
 ```yaml
 providers:
   9router-local:
-    baseUrl: [http://127.0.0.1:20128/v1](http://127.0.0.1:20128/v1)
+    baseUrl: http://127.0.0.1:20128/v1
     apiKey: <your-9router-api-key>
     api: openai-completions
     compat:
@@ -564,11 +627,11 @@ Import additional accounts (`acc2`, `acc3`, …) using [Step 4](#4-connect-your-
 
 **Admin Management Commands:**
 ```sh
-curl -s [http://127.0.0.1:20133/v1/accounts](http://127.0.0.1:20133/v1/accounts) -H "Authorization: Bearer $SENTINEL_API_KEY"
-curl -s [http://127.0.0.1:20133/v1/quota](http://127.0.0.1:20133/v1/quota)    -H "Authorization: Bearer $SENTINEL_API_KEY"
-curl -s [http://127.0.0.1:20133/v1/sessions](http://127.0.0.1:20133/v1/sessions) -H "Authorization: Bearer $SENTINEL_API_KEY"
-curl -s [http://127.0.0.1:20133/metrics](http://127.0.0.1:20133/metrics)     -H "Authorization: Bearer $SENTINEL_API_KEY"
-curl -s -X POST [http://127.0.0.1:20133/v1/refresh](http://127.0.0.1:20133/v1/refresh) -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s http://127.0.0.1:20133/v1/accounts -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s http://127.0.0.1:20133/v1/quota    -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s http://127.0.0.1:20133/v1/sessions -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s http://127.0.0.1:20133/metrics     -H "Authorization: Bearer $SENTINEL_API_KEY"
+curl -s -X POST http://127.0.0.1:20133/v1/refresh -H "Authorization: Bearer $SENTINEL_API_KEY"
 ```
 
 ---
@@ -632,6 +695,12 @@ curl -s -X POST [http://127.0.0.1:20133/v1/refresh](http://127.0.0.1:20133/v1/re
 
 | Symptom / Error | Likely Cause | Resolution |
 | :--- | :--- | :--- |
+| `failed to decrypt N Google cookie(s) … (key_found=true)` during import | Your browser uses **"App-Bound" (v20)** cookie encryption (recent Chrome, Brave, Edge, Chromium) that only the browser's own elevation service can decrypt | Use the cookie-header method: [§4 Step A](#step-a--copy-your-cookie-header-works-on-every-browser) (2 minutes, works on every browser). Firefox imports are unaffected. |
+| `copy cookie db: … being used by another process` | The browser that owns the profile is still running and holds its Cookies database locked | Close the browser completely — all windows **and** tray/background processes — then retry. Your sign-in is stored on disk, nothing is lost. Cookie-header/extension imports don't need this. |
+| `no SAPISID cookie found in <db>` | Not signed in to a Google session in that browser profile, or the wrong profile was selected | Sign in to `gemini.google.com/app` first; retry with an explicit profile (`sentinel --chrome-profile brave:"Profile 4" --setup main` — flags before the name) or a full profile path. |
+| `cookie payload does not contain SAPISID` | Cookie-Editor export taken only on `gemini.google.com` (missing `.google.com` domain cookies) | Export on a `www.google.com` page as well, or use the [DevTools cookie-header method (§4 Step A)](#step-a--copy-your-cookie-header-works-on-every-browser) which captures everything at once. |
+| `unknown browser "brave"` / `cookie database not found at …` | Typo in the browser shortcut or wrong path (known: `chrome`, `chromium`, `brave`, `edge`, `vivaldi`) | Use a listed shortcut, or pass the full profile-directory / `cookies.sqlite` path (Firefox users: `…\Mozilla\Firefox\Profiles\<profile>\cookies.sqlite`). |
+| `unexpected extra arguments [–chrome-profile brave]` | Flags written **after** the account name; flag parsing stops at the first positional argument | Reorder so all flags come before the account name: `sentinel --chrome-profile brave --setup main`. |
 | `refusing non-loopback bind` at startup | `HOST` is set to `0.0.0.0`, `::`, or a LAN IP | Bind to `127.0.0.1`, `::1`, or `localhost`. Use a hardened HTTPS reverse proxy for remote access. |
 | `refusing to start with … admin key` | `SENTINEL_API_KEY` is `< 16` chars or a placeholder (`public`) | Generate a 64-char hex key ([§3 Step 2](#step-2--create-your-admin-key)). |
 | `401 invalid api key` | Missing auth header, typo in key, or `?key=` in URL | Pass `Authorization: Bearer sentinel-<name>` in headers. |
@@ -639,7 +708,7 @@ curl -s -X POST [http://127.0.0.1:20133/v1/refresh](http://127.0.0.1:20133/v1/re
 | `404 model_not_found` | Requested model is unavailable on that Google account | Run `./sentinel --probe` and copy the exact model slug. |
 | `429 model_substitution` | Quota depleted; Gemini tried to silently swap models | Wait until `X-Resets-At`, switch models, or use an admin key with multiple accounts. |
 | `429 rate_limit_error` / `session_busy` | Quota bucket empty or account concurrency saturated | Respect `Retry-After` (2s for busy sessions) or add another account. |
-| `502 upstream_auth_error` | Session cookies expired or revoked by Google | Re-import cookies ([§4](#4-connect-your-google-account)) and verify with `./sentinel --probe`. |
+| `502 upstream_auth_error` | Session cookies expired or revoked by Google | Re-import cookies ([§4](#4-connect-your-google-account) — only needed when a session dies; automatic rotation usually keeps it alive) and verify with `./sentinel --probe`. |
 | `502 model_identity_unknown` | Upstream response omitted model identity proof | Retry request; disable strict checking only if necessary via `SENTINEL_REJECT_DOWNGRADE=false`. |
 
 Still stuck? Run `./sentinel --probe` to inspect per-account and per-model diagnostics. **Never paste cookies, API keys, or private prompts into GitHub issues.**
@@ -676,7 +745,7 @@ CI enforces `gofmt`, `go vet`, `-race` tests, and `govulncheck` on every push.
 
 | Package / Path | Responsibility |
 | :--- | :--- |
-| [`cmd/sentinel/main.go`](./cmd/sentinel/main.go) | CLI flags (`--probe`, `--rotate`, `--status`, `--login`, `--import-*`, `--version`), directory migration, startup security gates, graceful shutdown |
+| [`cmd/sentinel/main.go`](./cmd/sentinel/main.go) | CLI flags (`--setup`, `--probe`, `--rotate`, `--status`, `--login`, `--import-*`, `--version`), startup security gates, graceful shutdown |
 | [`internal/config`](./internal/config) | `SENTINEL_*` env resolution, loopback validation, OS-matched browser headers |
 | [`internal/cookies`](./internal/cookies) | Cookie canonicalization, `SAPISIDHASH`, atomic `0600` persistence, dual-path rotation (`__Secure-1PSIDTS`, `SIDCC`), SQLite/AES browser decryption |
 | [`internal/transport`](./internal/transport) | `Chrome_150_PSK` uTLS + HTTP/2 client, header ordering, per-account session pools, bounded queues |

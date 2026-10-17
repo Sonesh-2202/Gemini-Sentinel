@@ -28,6 +28,22 @@ All notable changes to Gemini-Sentinel are recorded here. Format follows
   instead of the multi-step manual import flow.
 - README Quick Start rebuilt around the two-command `--setup` path; legacy
   python key generation and shell-export steps remain as advanced options.
+- README §4 rewritten with a browser-compatibility matrix and every import
+  outcome documented (Firefox, Chromium v10/v11, App-Bound v20, locked
+  cookie DB, missing SAPISID, flag ordering), plus a "how long do cookies
+  last?" answer: automatic rotation keeps sessions alive — re-import is
+  only required when Google revokes or expires a session.
+
+### Fixed
+
+- `--setup` hints used an invalid flag order (`sentinel --setup main
+  --chrome-profile …`): Go's flag parsing stops at the first positional
+  argument, so browser/profile flags were silently ignored. Hints and flag
+  help now show `sentinel --chrome-profile brave --setup main`, and
+  `--setup` rejects stray extra arguments with a clear explanation.
+- Browser-import errors for running browsers now say exactly what to do
+  ("close the browser completely and retry") instead of a raw file-lock
+  error.
 
 ### Added
 
