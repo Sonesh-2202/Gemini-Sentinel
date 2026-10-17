@@ -45,6 +45,11 @@ type Config struct {
 	SecCHUA            string
 	SecCHUAPlatform    string
 	LogLevel           string
+	// AutoAdminKey (SENTINEL_AUTO_ADMIN_KEY, default true) makes the server
+	// generate and persist a strong admin key in the data home `.env` when
+	// SENTINEL_API_KEY is unset, so admin endpoints work without manual setup.
+	AutoAdminKey bool
+	EnvFilePath  string // resolved path of the data-home .env settings file
 }
 
 // ThinkingLevels maps Gemini Web's 3 thinking levels ("low", "medium", "high") to
@@ -84,10 +89,12 @@ func LegacyHomeDirs() []string {
 
 // FromEnv constructs a Config from process environment variables.
 // SENTINEL_* names take precedence; HEARTH_*, then BRIDGE_* (and HOST/PORT),
-// remain accepted so existing setups keep working.
+// remain accepted so existing setups keep working. A local `.env` file inside
+// the data home is loaded first but only fills keys that are not already
+// present in the environment, so explicit exports always win.
 func FromEnv() *Config {
-	home, _ := os.UserHomeDir()
-	dataHome := envChain("SENTINEL_HOME", filepath.Join(home, ".gemini-sentinel"))
+	applyDotEnvDefaults()
+	dataHome := resolveHomeDir()
 	credFile := envStr("WEB_CRED_FILE", filepath.Join(dataHome, "web-credentials.json"))
 	accountsDir := filepath.Join(dataHome, "accounts")
 
@@ -143,6 +150,8 @@ func FromEnv() *Config {
 		SecCHUA:            chUA,
 		SecCHUAPlatform:    platform,
 		LogLevel:           strings.ToLower(strings.TrimSpace(envChain("SENTINEL_LOG_LEVEL", "info"))),
+		AutoAdminKey:       envChainBool("SENTINEL_AUTO_ADMIN_KEY", true),
+		EnvFilePath:        EnvFileName(dataHome),
 	}
 }
 

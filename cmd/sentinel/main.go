@@ -38,6 +38,8 @@ func main() {
 		importCookie  = flag.String("import-cookie", "", "Import raw Cookie header or Cookie-Editor JSON from --cookie-value, --cookie-file, or stdin into accounts/<name>.json")
 		cookieValue   = flag.String("cookie-value", "", "Raw Cookie header or JSON string for --import-cookie")
 		cookieFile    = flag.String("cookie-file", "", "Path to file containing raw Cookie header or Cookie-Editor JSON array for --import-cookie")
+		setupRun      = flag.Bool("setup", false, "One-command setup: import your browser's Google account, auto-generate/persist the admin key, verify models, then start the server (pass an account name as the first argument, e.g. sentinel --setup acc1)")
+		setupNoStart  = flag.Bool("setup-no-start", false, "With --setup: perform setup only and exit without starting the server")
 		probeOnce     = flag.Bool("probe", false, "Bootstrap all configured accounts, verify models & quota, and exit")
 		rotateOnce    = flag.Bool("rotate", false, "Run dual-path cookie rotation on all configured accounts and exit")
 		statusOnce    = flag.Bool("status", false, "Run local preflight checks (bind, keys, accounts) without network access and exit")
@@ -60,6 +62,22 @@ func main() {
 		dbOrProfile = *chromeProfile
 	}
 
+	if *setupRun {
+		acctName := "main"
+		if args := flag.Args(); len(args) > 0 {
+			acctName = args[0]
+		}
+		if err := runSetup(cfg, acctName, dbOrProfile); err != nil {
+			log.Fatalf("[setup] failed: %v", err)
+		}
+		if *setupNoStart {
+			return
+		}
+		// Reload config so the freshly persisted keys/accounts are visible,
+		// then fall through to start the server in the same process.
+		cfg = config.Load()
+		migrateLegacyHome(cfg)
+	}
 	if *loginAcct != "" {
 		if err := runInteractiveLogin(cfg, *loginAcct, dbOrProfile); err != nil {
 			log.Fatalf("[login] failed: %v", err)
@@ -67,13 +85,13 @@ func main() {
 		return
 	}
 	if *importChrome != "" {
-		if err := runImportChrome(cfg, *importChrome, dbOrProfile); err != nil {
+		if _, err := runImportChrome(cfg, *importChrome, dbOrProfile); err != nil {
 			log.Fatalf("[import-chrome] failed: %v", err)
 		}
 		return
 	}
 	if *importCookie != "" {
-		if err := runImportCookie(cfg, *importCookie, *cookieValue, *cookieFile); err != nil {
+		if _, err := runImportCookie(cfg, *importCookie, *cookieValue, *cookieFile); err != nil {
 			log.Fatalf("[import-cookie] failed: %v", err)
 		}
 		return
@@ -84,6 +102,12 @@ func main() {
 
 	srv := server.New(cfg)
 	loaded := srv.LoadCredentials()
+
+	// Zero-config admin key: when starting the server with accounts but no
+	// admin key, generate one once and persist it to the data-home .env so
+	// admin endpoints (failover pool, /metrics, …) work out of the box.
+	applyAutoAdminKeyIfNeeded(&cfg, srv, loaded)
+
 	if err := validateAuthConfig(cfg, loaded); err != nil {
 		log.Fatal(err)
 	}
@@ -149,7 +173,7 @@ func main() {
 		log.Printf("  data:      %s (%d account(s) loaded)", cfg.HomeDir, loaded)
 		log.Printf("  models:    http://%s/v1/models", addr)
 		if loaded == 0 {
-			log.Printf("  WARNING:   no credentials found — run `sentinel --import-chrome <name>` or place accounts in %s", cfg.AccountsDir)
+			log.Printf("  WARNING:   no credentials found — run `sentinel --setup` (imports your Google account in one step) or place accounts in %s", cfg.AccountsDir)
 		}
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[fatal] listen %s: %v", addr, err)
@@ -272,22 +296,22 @@ func runStatus(cfg config.Config) int {
 		fmt.Printf("  accounts:  %d file(s) in %s\n", count, cfg.AccountsDir)
 	}
 	if count == 0 {
-		fmt.Printf("  next:      sentinel --import-chrome <name>  (then sentinel --probe)\n")
+		fmt.Printf("  next:      sentinel --setup   (one command: imports account + creates admin key)\n")
 	} else {
-		fmt.Printf("  next:      sentinel --probe  (verify models & quota) then start the server\n")
+		fmt.Printf("  next:      start the server with `sentinel` — or run `sentinel --probe` to verify models & quota\n")
 	}
 	return fail
 }
 
-func runImportChrome(cfg config.Config, acctName, explicitDB string) error {
+func runImportChrome(cfg config.Config, acctName, explicitDB string) (*gemini.AccountClient, error) {
 	if !reSafeAccountName.MatchString(acctName) {
-		return fmt.Errorf("invalid account name %q (use 1-64 chars of A-Z a-z 0-9 . _ -)", acctName)
+		return nil, fmt.Errorf("invalid account name %q (use 1-64 chars of A-Z a-z 0-9 . _ -)", acctName)
 	}
 	var dbPath string
 	if strings.TrimSpace(explicitDB) != "" {
 		p, err := cookies.FindBrowserCookieDB(explicitDB)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		dbPath = p
 	} else {
@@ -298,15 +322,15 @@ func runImportChrome(cfg config.Config, acctName, explicitDB string) error {
 			dbPath = cookies.FindChromeCookieDB("")
 		}
 		if dbPath == "" {
-			return fmt.Errorf("could not locate Chrome/Brave/Chromium Cookies SQLite database")
+			return nil, fmt.Errorf("could not locate Chrome/Brave/Chromium Cookies SQLite database")
 		}
 	}
 	hdr, err := cookies.ReadChromeCookies(dbPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if cookies.ExtractSAPISID(hdr) == "" {
-		return fmt.Errorf("no SAPISID cookie found in %s — sign in to gemini.google.com first", dbPath)
+		return nil, fmt.Errorf("no SAPISID cookie found in %s — sign in to gemini.google.com first", dbPath)
 	}
 	outPath := filepath.Join(cfg.AccountsDir, acctName+".json")
 	srv := server.New(cfg)
@@ -314,37 +338,37 @@ func runImportChrome(cfg config.Config, acctName, explicitDB string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := ac.Bootstrap(ctx); err != nil {
-		return fmt.Errorf("bootstrap with imported cookies failed: %w", err)
+		return nil, fmt.Errorf("bootstrap with imported cookies failed: %w", err)
 	}
 	fmt.Printf("Imported account %q (%s) -> %s\n", acctName, ac.Email(), outPath)
 	printStandaloneConnectionInfo(cfg, acctName)
-	return nil
+	return ac, nil
 }
 
-func runImportCookie(cfg config.Config, acctName, rawVal, filePath string) error {
+func runImportCookie(cfg config.Config, acctName, rawVal, filePath string) (*gemini.AccountClient, error) {
 	if !reSafeAccountName.MatchString(acctName) {
-		return fmt.Errorf("invalid account name %q (use 1-64 chars of A-Z a-z 0-9 . _ -)", acctName)
+		return nil, fmt.Errorf("invalid account name %q (use 1-64 chars of A-Z a-z 0-9 . _ -)", acctName)
 	}
 	if rawVal == "" && filePath != "" {
 		b, err := os.ReadFile(filePath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		rawVal = string(b)
 	}
 	if rawVal == "" {
 		b, err := io.ReadAll(os.Stdin)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		rawVal = string(b)
 	}
 	hdr, _, err := cookies.ParseImportPayload(rawVal)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if cookies.ExtractSAPISID(hdr) == "" {
-		return fmt.Errorf("cookie payload does not contain SAPISID")
+		return nil, fmt.Errorf("cookie payload does not contain SAPISID")
 	}
 	outPath := filepath.Join(cfg.AccountsDir, acctName+".json")
 	srv := server.New(cfg)
@@ -352,11 +376,11 @@ func runImportCookie(cfg config.Config, acctName, rawVal, filePath string) error
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := ac.Bootstrap(ctx); err != nil {
-		return fmt.Errorf("bootstrap with imported cookies failed: %w", err)
+		return nil, fmt.Errorf("bootstrap with imported cookies failed: %w", err)
 	}
 	fmt.Printf("Imported account %q (%s) -> %s\n", acctName, ac.Email(), outPath)
 	printStandaloneConnectionInfo(cfg, acctName)
-	return nil
+	return ac, nil
 }
 
 func runInteractiveLogin(cfg config.Config, acctName, explicitDB string) error {
@@ -383,9 +407,11 @@ func runInteractiveLogin(cfg config.Config, acctName, explicitDB string) error {
 	line, _ := reader.ReadString('\n')
 	line = strings.TrimSpace(line)
 	if line != "" {
-		return runImportCookie(cfg, acctName, line, "")
+		_, err := runImportCookie(cfg, acctName, line, "")
+		return err
 	}
-	return runImportChrome(cfg, acctName, explicitDB)
+	_, err := runImportChrome(cfg, acctName, explicitDB)
+	return err
 }
 
 func findBrowserBinary(browser string) string {

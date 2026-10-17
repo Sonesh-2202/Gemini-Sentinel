@@ -34,6 +34,10 @@ Include: version (`gsb --version`), OS, Go version, redacted configuration
 2. Delete stored credentials: remove
    `~/.gemini-sentinel/accounts/<name>.json` and
    `~/.gemini-sentinel/session-cache.json`.
-3. Rotate `SENTINEL_API_KEY` to a fresh random value (>= 32 chars).
-4. Re-import cookies from a clean browser profile (`gsb --import-chrome`).
+3. Rotate the admin key: `SENTINEL_API_KEY` env value or the
+   `~/.gemini-sentinel/.env` `SENTINEL_API_KEY=` entry (>= 32 chars;
+   regenerate automatically by deleting the entry and restarting with
+   `SENTINEL_AUTO_ADMIN_KEY` enabled).
+4. Re-import cookies from a clean browser profile (`sentinel --setup` or
+   `sentinel --import-chrome`).
 5. Check Google account activity for unfamiliar sessions.

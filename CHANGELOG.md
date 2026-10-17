@@ -7,6 +7,30 @@ All notable changes to Hearth are recorded here. Format follows
 
 ### Added
 
+- `sentinel --setup`: **one-command setup** that imports your Google account
+  from the local browser, generates and persists a strong admin key to the
+  data-home `.env`, verifies the live model catalog, and (by default) starts
+  the server in the same run. `--setup-no-start` performs setup only.
+- `--setup [name]` accepts an optional account name (default `main`);
+  re-running is idempotent and refreshes that account's cookies.
+- Automatic `.env` loading: the first `.env` found in the data home
+  (`~/.gemini-sentinel/.env` by default) fills unset environment variables,
+  so `SENTINEL_API_KEY` etc. no longer need shell exports. Explicit
+  environment variables always win; `SENTINEL_ENV_FILE=off` disables loading.
+- Automatic admin-key provisioning on plain server starts
+  (`SENTINEL_AUTO_ADMIN_KEY`, default `true`): if accounts are loaded but no
+  admin key is configured, one strong key is generated once, persisted, and
+  reused on later runs.
+
+### Changed
+
+- `--status` and the no-credentials warning now recommend `sentinel --setup`
+  instead of the multi-step manual import flow.
+- README Quick Start rebuilt around the two-command `--setup` path; legacy
+  python key generation and shell-export steps remain as advanced options.
+
+### Added
+
 - `sentinel --status`: offline preflight checks (bind, admin key, accounts)
   with next-step guidance and nonzero exit on problems.
 - `GET /metrics`: Prometheus text exposition (per-route request counters,
